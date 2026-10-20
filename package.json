@@ -1,0 +1,27 @@
+{
+  "name": "king-of-the-animals",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20.6"
+  },
+  "scripts": {
+    "dev": "node --watch server/index.js --dev",
+    "build": "vite build client",
+    "start": "node server/index.js"
+  },
+  "dependencies": {
+    "canvas-confetti": "~1.9.3",
+    "express": "~4.21.2",
+    "gsap": "~3.12.7",
+    "howler": "~2.2.4",
+    "nipplejs": "~0.10.2",
+    "postprocessing": "~6.36.6",
+    "socket.io": "~4.8.1",
+    "socket.io-client": "~4.8.1",
+    "three": "~0.170.0",
+    "three.quarks": "~0.15.7",
+    "vite": "~5.4.21"
+  }
+}

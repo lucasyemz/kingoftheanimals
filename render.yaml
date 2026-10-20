@@ -1,0 +1,15 @@
+# Blueprint do Render: no painel, New → Blueprint → escolha este repositório.
+# Um serviço Node só: serve o jogo e as salas (WebSocket) na mesma porta.
+services:
+  - type: web
+    name: king-of-the-animals
+    runtime: node
+    plan: free
+    region: virginia   # o mais perto do Brasil entre as regiões do Render
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /healthz
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "22"

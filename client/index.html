@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no" />
+    <meta name="theme-color" content="#5bb8f5" />
+    <title>King of The Animals</title>
+    <meta name="description" content="Party game in your browser: knock the other animals off the island. Play solo vs bots or send a link to your friends." />
+    <link rel="icon" type="image/png" href="/favicon.png" />
+    <link rel="apple-touch-icon" href="/favicon.png" />
+    <!-- Prévia do link de convite (WhatsApp, Discord, Slack). __ORIGIN__ vira o endereço real no servidor. -->
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="King of The Animals" />
+    <meta property="og:description" content="Knock the other animals off the island! Join my room and play in your browser." />
+    <meta property="og:image" content="__ORIGIN__/og-image.jpg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;700&display=swap" rel="stylesheet" />
+    <link rel="preload" as="image" href="/logo.webp" fetchpriority="high" />
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <div id="loading">
+      <div class="loading-box">
+        <h1 class="loading-title"><img class="logo" src="/logo.webp" alt="King of The Animals" width="1200" height="664" /></h1>
+        <div class="loading-bar"><i></i></div>
+        <div class="loading-pct"></div>
+        <div class="loading-tip"></div>
+      </div>
+    </div>
+    <canvas id="game"></canvas>
+    <div id="labels"></div>
+    <div id="ui"></div>
+    <div id="touch">
+      <div class="stick-zone"></div>
+      <button class="dash-btn"></button>
+      <div class="emote-bar"></div>
+    </div>
+    <div id="debug" hidden></div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

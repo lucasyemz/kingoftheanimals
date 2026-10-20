@@ -1,0 +1,273 @@
+{
+  "animals": {
+    "duck": {
+      "file": "models/animals/duck.glb",
+      "source": "Kenney Cube Pets: animal-chick",
+      "clips": [
+        "static",
+        "idle",
+        "walk",
+        "run",
+        "eat",
+        "dance",
+        "gesture-positive",
+        "gesture-negative"
+      ],
+      "headNode": "body",
+      "height": 1.59,
+      "forward": "+z"
+    },
+    "pig": {
+      "file": "models/animals/pig.glb",
+      "source": "Kenney Cube Pets: animal-pig",
+      "clips": [
+        "static",
+        "idle",
+        "walk",
+        "run",
+        "eat",
+        "dance",
+        "gesture-positive",
+        "gesture-negative"
+      ],
+      "headNode": "body",
+      "height": 1.58,
+      "forward": "+z"
+    },
+    "cow": {
+      "file": "models/animals/cow.glb",
+      "source": "Kenney Cube Pets: animal-cow",
+      "clips": [
+        "static",
+        "idle",
+        "walk",
+        "run",
+        "eat",
+        "dance",
+        "gesture-positive",
+        "gesture-negative"
+      ],
+      "headNode": "body",
+      "height": 1.61,
+      "forward": "+z"
+    },
+    "penguin": {
+      "file": "models/animals/penguin.glb",
+      "source": "Kenney Cube Pets: animal-penguin",
+      "clips": [
+        "static",
+        "idle",
+        "walk",
+        "run",
+        "eat",
+        "dance",
+        "gesture-positive",
+        "gesture-negative"
+      ],
+      "headNode": "body",
+      "height": 1.59,
+      "forward": "+z"
+    },
+    "panda": {
+      "file": "models/animals/panda.glb",
+      "source": "Kenney Cube Pets: animal-panda",
+      "clips": [
+        "static",
+        "idle",
+        "walk",
+        "run",
+        "eat",
+        "dance",
+        "gesture-positive",
+        "gesture-negative"
+      ],
+      "headNode": "body",
+      "height": 1.5,
+      "forward": "+z"
+    },
+    "bunny": {
+      "file": "models/animals/bunny.glb",
+      "source": "Kenney Cube Pets: animal-bunny",
+      "clips": [
+        "static",
+        "idle",
+        "walk",
+        "run",
+        "eat",
+        "dance",
+        "gesture-positive",
+        "gesture-negative"
+      ],
+      "headNode": "body",
+      "height": 2.01,
+      "forward": "+z"
+    },
+    "cat": {
+      "file": "models/animals/cat.glb",
+      "source": "Kenney Cube Pets: animal-cat",
+      "clips": [
+        "static",
+        "idle",
+        "walk",
+        "run",
+        "eat",
+        "dance",
+        "gesture-positive",
+        "gesture-negative"
+      ],
+      "headNode": "body",
+      "height": 1.71,
+      "forward": "+z"
+    },
+    "dog": {
+      "file": "models/animals/dog.glb",
+      "source": "Kenney Cube Pets: animal-dog",
+      "clips": [
+        "static",
+        "idle",
+        "walk",
+        "run",
+        "eat",
+        "dance",
+        "gesture-positive",
+        "gesture-negative"
+      ],
+      "headNode": "body",
+      "height": 1.58,
+      "forward": "+z"
+    }
+  },
+  "props": {
+    "tree": "models/props/tree.glb",
+    "pine": "models/props/pine.glb",
+    "rock": "models/props/rock.glb",
+    "cactus": "models/props/cactus.glb",
+    "crystal": "models/props/crystal.glb",
+    "darkRock": "models/props/darkRock.glb",
+    "snowRock": "models/props/snowRock.glb",
+    "box": "models/props/box.glb",
+    "nk_cactus_short": "models/props/nk_cactus_short.glb",
+    "nk_flower_redA": "models/props/nk_flower_redA.glb",
+    "nk_flower_yellowA": "models/props/nk_flower_yellowA.glb",
+    "nk_log": "models/props/nk_log.glb",
+    "nk_mushroom_redGroup": "models/props/nk_mushroom_redGroup.glb",
+    "nk_plant_bushLarge": "models/props/nk_plant_bushLarge.glb",
+    "nk_rock_largeA": "models/props/nk_rock_largeA.glb",
+    "nk_rock_tallB": "models/props/nk_rock_tallB.glb",
+    "nk_statue_column": "models/props/nk_statue_column.glb",
+    "nk_statue_columnDamaged": "models/props/nk_statue_columnDamaged.glb",
+    "nk_statue_obelisk": "models/props/nk_statue_obelisk.glb",
+    "nk_stone_largeA": "models/props/nk_stone_largeA.glb",
+    "nk_stone_largeD": "models/props/nk_stone_largeD.glb",
+    "nk_stone_tallA": "models/props/nk_stone_tallA.glb",
+    "nk_stone_tallC": "models/props/nk_stone_tallC.glb",
+    "nk_stump_old": "models/props/nk_stump_old.glb",
+    "nk_tree_default": "models/props/nk_tree_default.glb",
+    "nk_tree_fat": "models/props/nk_tree_fat.glb",
+    "nk_tree_oak": "models/props/nk_tree_oak.glb",
+    "nk_tree_pineRoundC": "models/props/nk_tree_pineRoundC.glb",
+    "nk_tree_pineSmallA": "models/props/nk_tree_pineSmallA.glb",
+    "nk_tree_pineTallA_detailed": "models/props/nk_tree_pineTallA_detailed.glb",
+    "nk_tree_thin_dark": "models/props/nk_tree_thin_dark.glb"
+  },
+  "particles": {
+    "smoke": "textures/particles/smoke.png",
+    "star": "textures/particles/star.png",
+    "spark": "textures/particles/spark.png",
+    "circle": "textures/particles/circle.png",
+    "dirt": "textures/particles/dirt.png"
+  },
+  "sounds": {
+    "alarm": [
+      "sounds/alarm_1.mp3",
+      "sounds/alarm_2.mp3"
+    ],
+    "beep": [
+      "sounds/beep_1.mp3",
+      "sounds/beep_2.mp3"
+    ],
+    "boing": [
+      "sounds/boing_1.mp3",
+      "sounds/boing_2.mp3",
+      "sounds/boing_3.mp3"
+    ],
+    "click": [
+      "sounds/click_1.mp3",
+      "sounds/click_2.mp3"
+    ],
+    "ding": [
+      "sounds/ding_1.mp3",
+      "sounds/ding_2.mp3",
+      "sounds/ding_3.mp3"
+    ],
+    "emote1": [
+      "sounds/emote1_1.mp3",
+      "sounds/emote1_2.mp3"
+    ],
+    "emote2": [
+      "sounds/emote2_1.mp3",
+      "sounds/emote2_2.mp3"
+    ],
+    "emote3": [
+      "sounds/emote3_1.mp3",
+      "sounds/emote3_2.mp3"
+    ],
+    "emote4": [
+      "sounds/emote4_1.mp3",
+      "sounds/emote4_2.mp3"
+    ],
+    "explosion": [
+      "sounds/explosion_1.mp3",
+      "sounds/explosion_2.mp3"
+    ],
+    "fanfare": [
+      "sounds/fanfare_1.mp3",
+      "sounds/fanfare_2.mp3"
+    ],
+    "go": [
+      "sounds/go_1.mp3",
+      "sounds/go_2.mp3",
+      "sounds/go_3.mp3"
+    ],
+    "kingslayer": [
+      "sounds/kingslayer_1.mp3",
+      "sounds/kingslayer_2.mp3"
+    ],
+    "poof": [
+      "sounds/poof_1.mp3",
+      "sounds/poof_2.mp3",
+      "sounds/poof_3.mp3"
+    ],
+    "pop": [
+      "sounds/pop_1.mp3",
+      "sounds/pop_2.mp3",
+      "sounds/pop_3.mp3"
+    ],
+    "rumble": [
+      "sounds/rumble_1.mp3",
+      "sounds/rumble_2.mp3"
+    ],
+    "scream": [
+      "sounds/scream_1.mp3",
+      "sounds/scream_2.mp3",
+      "sounds/scream_3.mp3"
+    ],
+    "victory": [
+      "sounds/victory_1.mp3",
+      "sounds/victory_2.mp3"
+    ],
+    "whoosh": [
+      "sounds/whoosh_1.mp3",
+      "sounds/whoosh_2.mp3"
+    ]
+  },
+  "music": {
+    "lobby": "music/lobby.mp3",
+    "match": "music/match.mp3"
+  },
+  "credits": [
+    "Kenney (kenney.nl) — CC0: Cube Pets, Platformer Kit, Nature Kit, Particle Pack, Interface Sounds, Impact Sounds, Digital Audio, Sci-Fi Sounds, UI Audio, Voiceover Pack, Voiceover Pack: Fighter, Music Jingles",
+    "Music: \"TechnoByte\" by Yueki (yuekistimky.itch.io/technobyte) — CC0",
+    "Synthesized SFX (beep, whoosh, boing, scream slide-whistle, poof, alarm) generated with ffmpeg for this project — CC0"
+  ]
+}
