@@ -1,6 +1,6 @@
 // Desenho dos minijogos: barras do Pula-corda, os três andares do Chão que some,
 // as bolas da Chuva de bolas e o "braço" de quem está agarrando alguém.
-// Tudo vem do state interpolado (arena.bars, arena.hex, arena.balls, players[].grab).
+// Tudo vem do state interpolado (arena.bars, arena.hex, arena.balls).
 
 import * as THREE from 'three';
 import { ARENA, HEX } from '../../shared/constants.js';
@@ -140,48 +140,8 @@ export function createMinigamesView(world) {
     }
   }
 
-  // ---------- Agarrar: um braço na cor de quem agarra ----------
-  const beams = new Map(); // grabber id → mesh
-  const beamGeo = new THREE.CylinderGeometry(0.1, 0.1, 1, 8).rotateX(Math.PI / 2);
-  // Laço em volta de quem foi agarrado (de longe o braço some entre os dois bichos)
-  const lassoGeo = new THREE.TorusGeometry(0.72, 0.09, 8, 32).rotateX(Math.PI / 2);
-  function syncBeams(players, animals, colorOf, roster) {
-    const seen = new Set();
-    for (const p of players) {
-      if (!p.grab) continue;
-      const a = animals.get(p.id);
-      const b = animals.get(p.grab);
-      if (!a || !b) continue;
-      seen.add(p.id);
-      let m = beams.get(p.id);
-      if (!m) {
-        const material = new THREE.MeshBasicMaterial({ color: colorOf(roster[p.id]) });
-        m = new THREE.Mesh(beamGeo, material);
-        m.userData.lasso = new THREE.Mesh(lassoGeo, material);
-        root.add(m, m.userData.lasso);
-        beams.set(p.id, m);
-      }
-      const from = new THREE.Vector3(a.root.position.x, a.root.position.y + a.lift.position.y + 0.65, a.root.position.z);
-      const to = new THREE.Vector3(b.root.position.x, b.root.position.y + b.lift.position.y + 0.65, b.root.position.z);
-      m.position.copy(from).add(to).multiplyScalar(0.5);
-      m.scale.set(1, 1, Math.max(0.05, from.distanceTo(to)));
-      m.lookAt(to);
-      const lasso = m.userData.lasso;
-      lasso.position.set(to.x, to.y - 0.1, to.z);
-      lasso.rotation.y += 0.15;
-      lasso.scale.setScalar(1 + Math.sin(performance.now() / 90) * 0.06);
-    }
-    for (const [id, m] of beams) {
-      if (seen.has(id)) continue;
-      m.removeFromParent();
-      m.userData.lasso.removeFromParent();
-      m.material.dispose();
-      beams.delete(id);
-    }
-  }
-
   return {
-    debug: () => ({ beams: beams.size, balls: balls.size, bars: bars.filter((m) => m.visible).length }),
+    debug: () => ({ balls: balls.size, bars: bars.filter((m) => m.visible).length }),
     update(s, dt, { animals, colorOf, players }) {
       const a = s.arena ?? {};
       const now = performance.now();
@@ -208,7 +168,6 @@ export function createMinigamesView(world) {
       else layers.forEach((l) => (l.mesh.visible = false));
 
       syncBalls(a.balls, dt);
-      syncBeams(s.players, animals, colorOf, players);
     },
 
     reset() {
@@ -217,11 +176,6 @@ export function createMinigamesView(world) {
         l.mesh.visible = false;
       }
       syncBalls([], 0);
-      for (const m of beams.values()) {
-        m.removeFromParent();
-        m.userData.lasso.removeFromParent();
-      }
-      beams.clear();
       bars.forEach((m) => (m.visible = false));
       hub.visible = false;
       world.setArenaHidden(false);

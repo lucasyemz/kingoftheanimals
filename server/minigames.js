@@ -2,7 +2,7 @@
 // (hexágonos que caem) e Chuva de bolas. Também a barra giratória genérica, usada
 // pela barra de neon do Neon Night. Funções puras sobre o Game (rodam no navegador também).
 
-import { PHYSICS, JUMPROPE, HEX, BALLS } from '../shared/constants.js';
+import { PHYSICS, JUMPROPE, HEX, BALLS, HEALTH } from '../shared/constants.js';
 import { PLAYER_STATE as ST, EVENT } from '../shared/messages.js';
 import { HEX_TILES, hexAt } from '../shared/hexgrid.js';
 
@@ -209,6 +209,7 @@ function updateBalls(game, dt) {
       }
       if (!b.hit?.includes(p.id)) {
         (b.hit ??= []).push(p.id);
+        game.damage(p, HEALTH.BALL_DAMAGE);
         game.event(EVENT.BALL_HIT, { id: p.id, x: r2(p.x), z: r2(p.z) });
       }
     }

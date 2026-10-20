@@ -592,6 +592,42 @@ input:focus {
   white-space: nowrap;
 }
 
+.animal-label .hp-bar {
+  width: 76px;
+  height: 10px;
+  margin: 3px auto 0;
+  border-radius: 4px;
+  background: rgb(0 0 0 / 0.55);
+  border: 2px solid var(--ink);
+  overflow: hidden;
+}
+
+.animal-label .hp-bar[hidden] {
+  display: none;
+}
+
+.animal-label .hp-bar i {
+  display: block;
+  height: 100%;
+  transition: width 0.15s ease-out;
+}
+
+.animal-label .hp-bar.low {
+  animation: hp-low 0.6s ease-in-out infinite alternate;
+}
+
+.animal-label .hp-bar.hit {
+  animation: hp-hit 0.25s ease-out;
+}
+
+@keyframes hp-hit {
+  30% { transform: scale(1.25); border-color: #fff; }
+}
+
+@keyframes hp-low {
+  to { border-color: #ff2a2a; }
+}
+
 .animal-label .badge {
   font-size: 10px;
 }
@@ -1487,26 +1523,6 @@ body.tutorial .hud-emotes {
   min-height: 40px;
   font-size: 13px;
   opacity: 0.9;
-}
-
-/* Botão de agarrar (celular): em cima do DASH */
-#touch .grab-btn {
-  position: fixed;
-  right: calc(max(24px, env(safe-area-inset-right)) + 14px);
-  bottom: 150px;
-  width: 78px;
-  height: 78px;
-  border-radius: 50%;
-  font: 700 16px 'Fredoka', sans-serif;
-  color: #fff;
-  background: #4361ee;
-  border: 4px solid var(--ink);
-  box-shadow: 0 4px 0 var(--ink);
-}
-
-#touch .grab-btn:active {
-  transform: translateY(3px);
-  box-shadow: 0 1px 0 var(--ink);
 }
 
 /* ---------- Lobby: grade de modos ---------- */

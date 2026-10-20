@@ -55,7 +55,7 @@ function updateWind(game, h, dt) {
   } else if (w.phase === 'blow') {
     for (const p of game.participants) {
       if (!standing(p)) continue;
-      const k = h.accel * dt * game.pushTaken(p);
+      const k = h.accel * dt * game.heaviness(p); // vento não depende da vida
       p.vx += w.dx * k;
       p.vz += w.dz * k;
     }

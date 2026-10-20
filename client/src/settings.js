@@ -99,7 +99,6 @@ export const MISSION_POOL = [
   { id: 'wins2', stat: 'roundWins', goal: 2, reward: 50 },
   { id: 'matches3', stat: 'matches', goal: 3, reward: 40 },
   { id: 'jumps30', stat: 'jumps', goal: 30, reward: 25 },
-  { id: 'grabs3', stat: 'grabs', goal: 3, reward: 35 },
   { id: 'ballsWin', stat: 'win:balls', goal: 1, reward: 50 },
   { id: 'hexWin', stat: 'win:hex', goal: 1, reward: 50 },
   { id: 'ropeWin', stat: 'win:jumprope', goal: 1, reward: 50 },

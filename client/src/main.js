@@ -641,7 +641,6 @@ net.on(MSG.STATE, (s) => {
 });
 
 net.on(MSG.EVENT, (ev) => {
-  if (ev.type === EVENT.GRAB && ev.id === myId) track('grabs');
   if (ev.type === EVENT.TUTORIAL && tutorial.active) {
     tutorial.done = true;
     setTimeout(finishTutorial, 2200);
@@ -725,7 +724,6 @@ function reconcile(s) {
     dashCd: (me.dashCd ?? 0) * (me.dashCdMax || PHYSICS.DASH_COOLDOWN),
     dashBuffer: 0, pu: me.pu, puT: me.puT ?? 0, inputX: 0, inputZ: 0, potato: !!me.potato,
     y: me.y ?? 0, vy: me.vy ?? 0, jumpBuffer: 0,
-    grabbing: !!me.grab, grabbed: !!me.grabbed,
   };
   for (const h of predict.history) stepPredicted(h);
   predict.prev = { x: predict.me.x, z: predict.me.z, y: predict.me.y };

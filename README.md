@@ -44,7 +44,8 @@ No menu, digite seu nome (ele aparece em cima do bicho) e escolha:
 | Ação | Teclado | Gamepad | Celular |
 | --- | --- | --- | --- |
 | Mover | WASD / setas | analógico esquerdo | joystick à esquerda |
-| Dash | Espaço | A / X | botão DASH |
+| Pular | Espaço | A | botão JUMP |
+| Dash | E (ou Shift) | X / B / Y / LB / RB | botão DASH |
 | Emotes | 1 a 4 | direcional | botões no topo |
 
 ## Atalhos de debug

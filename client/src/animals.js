@@ -7,7 +7,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import gsap from 'gsap';
-import { PHYSICS, POWERUPS, FX, HEX } from '../../shared/constants.js';
+import { PHYSICS, POWERUPS, FX, HEX, HEALTH } from '../../shared/constants.js';
 import { PLAYER_STATE as ST } from '../../shared/messages.js';
 import { hatMesh } from './hats.js';
 
@@ -224,6 +224,12 @@ export class Animal {
 
     // Etiquetas HTML sobre a cabeça: nome, ícone do power-up, balão do emote
     this.labelEl = makeLabel('animal-label');
+    // nome em cima, barra de vida embaixo (verde → amarelo → vermelho)
+    this.labelEl.innerHTML = '<div class="label-main"></div><div class="hp-bar" hidden><i></i></div>';
+    this.labelMain = this.labelEl.firstChild;
+    this.hpBar = this.labelEl.lastChild;
+    this.hpFill = this.hpBar.firstChild;
+    this.hp = null;
     this.label = new CSS2DObject(this.labelEl);
     this.label.position.y = this.headY + 0.55;
     this.lift.add(this.label);
@@ -246,7 +252,7 @@ export class Animal {
   setLabel(html) {
     if (this.labelHtml !== html) {
       this.labelHtml = html;
-      this.labelEl.innerHTML = html;
+      this.labelMain.innerHTML = html;
     }
   }
 
@@ -309,7 +315,14 @@ export class Animal {
       if (speed > 0.6) this.play('run', { timeScale: 0.6 + (speed / PHYSICS.MAX_SPEED) * 0.9 });
       else this.play('idle');
     }
-    if (this.stars.visible) this.stars.rotation.y += dt * 8;
+    if (this.stars.visible) this.stars.rotation.y += dt * (this.dazed ? 11 : 8);
+    this.setHealth(p.hp);
+    // Tonto (dois golpes seguidos): estrelas maiores enquanto dura
+    const dazed = p.st === ST.STUNNED && (p.stT ?? 0) > PHYSICS.STUN_DURATION + 0.05;
+    if (dazed !== this.dazed) {
+      this.dazed = dazed;
+      this.stars.scale.setScalar(dazed ? 1.7 : 1);
+    }
     this.mixer?.update(dt);
   }
 
@@ -412,6 +425,27 @@ export class Animal {
 
   hideIcon() {
     this.icon.visible = false;
+  }
+
+  setHealth(hp) {
+    if (hp == null) {
+      this.hpBar.hidden = true;
+      return;
+    }
+    const v = Math.round(Math.max(0, Math.min(HEALTH.MAX, hp)));
+    if (v === this.hp) return;
+    const hurt = this.hp != null && v < this.hp;
+    this.hp = v;
+    const f = v / HEALTH.MAX;
+    this.hpBar.hidden = false;
+    this.hpFill.style.width = `${f * 100}%`;
+    this.hpFill.style.background = `hsl(${Math.round(f * 120)} 80% 50%)`;
+    this.hpBar.classList.toggle('low', f <= 0.3);
+    if (hurt) {
+      this.hpBar.classList.remove('hit');
+      void this.hpBar.offsetWidth; // reinicia a animação
+      this.hpBar.classList.add('hit');
+    }
   }
 
   // Balão do emote: sobe e estoura

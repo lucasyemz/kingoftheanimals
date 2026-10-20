@@ -2,7 +2,7 @@
 // Prioridade (GDD): fugir da borda → pegar power-up → caçar → dar dash.
 // O tempo de reação é um atraso entre decidir e aplicar o input.
 
-import { PHYSICS, ARENA, BOTS, HILL, GRAB } from '../shared/constants.js';
+import { PHYSICS, ARENA, BOTS, HILL } from '../shared/constants.js';
 import { PHASE, PLAYER_STATE as ST } from '../shared/messages.js';
 import { timeToBar, hexIntact } from './minigames.js';
 import { HEX_TILES } from '../shared/hexgrid.js';
@@ -21,7 +21,6 @@ export function createBrain(difficulty, rng = Math.random) {
     targetId: null,
     positioning: false,
     rerollAt: 0,
-    grabUntil: 0,            // segurando o botão de agarrar até este instante
     hexDir: null,            // Chão que some: direção em que está indo
   };
 }
@@ -35,15 +34,12 @@ export function botThink(game, p, now) {
     p.inputZ = d.z;
     if (d.dash) p.dashBuffer = PHYSICS.DASH_BUFFER;
     if (d.jump) p.jumpBuffer = PHYSICS.JUMP_BUFFER;
-    if (d.grab) brain.grabUntil = now + d.grab;
   }
-  p.grabHeld = now < brain.grabUntil;
   if (now < brain.nextThink) return;
   brain.nextThink = now + BOTS.THINK_INTERVAL;
   const cfg = BOTS.DIFFICULTY[brain.difficulty] ?? BOTS.DIFFICULTY.medium;
-  const d = p.grab ? holdGrab(game, p) : decide(game, p, cfg, brain, now);
-  d.jump = !d.dash && !p.grab && wantsJump(game, p, cfg, brain);
-  if (!d.dash && !d.jump && !p.grab) d.grab = wantsGrab(game, p, cfg, brain);
+  const d = decide(game, p, cfg, brain, now);
+  d.jump = !d.dash && wantsJump(game, p, cfg, brain);
   brain.queue.push({ at: now + cfg.reactionMs / 1000, ...d });
 }
 
@@ -85,30 +81,6 @@ function wantsJump(game, p, cfg, brain) {
     if (game.potato?.id === q.id && d < 1.8) return rng() < cfg.jumpSkill * 0.4;
   }
   return !game.hex && rng() < 0.004;
-}
-
-// Agarrar: alguém colado na frente, perto da borda, com o dash recarregando
-function wantsGrab(game, p, cfg, brain) {
-  if (p.grabCd > 0 || p.st !== ST.ALIVE || p.y > 0 || p.dashCd <= 0.2) return 0;
-  const fx = Math.sin(p.dir);
-  const fz = Math.cos(p.dir);
-  for (const q of game.participants) {
-    if (q === p || !standing(q)) continue;
-    const dx = q.x - p.x;
-    const dz = q.z - p.z;
-    const d = Math.hypot(dx, dz);
-    if (d > GRAB.REACH * 0.95 || (dx * fx + dz * fz) / (d || 1) < 0.5) continue;
-    const edgeness = Math.hypot(q.x, q.z) / Math.max(game.arena.radius, 1);
-    if (edgeness > 0.55 && brain.rng() < cfg.grabChance) return 0.45 + brain.rng() * 0.5;
-  }
-  return 0;
-}
-
-// Segurando alguém: anda para a borda mais perto dele, para o arremesso sair para fora
-function holdGrab(game, p) {
-  const q = game.players.get(p.grab.id);
-  if (!q) return { x: 0, z: 0, dash: false };
-  return { ...unit(q.x, q.z), dash: false };
 }
 
 function unit(x, z) {
@@ -292,7 +264,9 @@ function decide(game, p, cfg, brain, now) {
   for (const q of others) {
     const dist = Math.hypot(q.x - p.x, q.z - p.z);
     const edgeness = Math.hypot(q.x, q.z) / Math.max(edge, 0.1);
-    const score = ((edgeness + 0.5) / (1 + dist)) * (q.id === game.kingId ? BOTS.KING_TARGET_WEIGHT : 1);
+    // Médio e difícil preferem quem tem pouca vida (voa mais longe)
+    const weak = Math.pow(game.knockback(q), cfg.positionChance);
+    const score = ((edgeness + 0.5) / (1 + dist)) * (q.id === game.kingId ? BOTS.KING_TARGET_WEIGHT : 1) * weak;
     if (score > best) {
       best = score;
       target = q;

@@ -263,8 +263,15 @@ export function createFx({ world, ui, hooks }) {
       sound('pop', { volume: 0.25, rate: rand(1.5, 1.8) });
     },
 
-    [EVENT.DASH_HIT]: ({ id, target, x, z }) => {
+    [EVENT.DASH_HIT]: ({ id, target, x, z, dazed }) => {
       const mine = isMe(id) || isMe(target);
+      if (dazed) {
+        // Dois golpes seguidos: tonto
+        sound('pop', { volume: mine ? 0.8 : 0.45, rate: 0.6 });
+        animal(target)?.showEmote(STR.dazed, 1.2);
+        burst(x, 1.4, z, { tex: 'star', additive: true, count: 18, life: [0.5, 0.9], speed: [1.5, 3], size: [0.35, 0.6], color: '#ffe066' });
+        if (isMe(target)) hooks.vibrate?.([40, 60, 40]);
+      }
       sound('boing', { rate: rand(...FX.BOING_RATE), volume: 0.9 });
       hooks.hitStop(mine ? FX.HIT_STOP_ME_MS : FX.HIT_STOP_MS);
       world.shakeCamera(mine ? FX.SHAKE_HIT_ME : FX.SHAKE_HIT);
@@ -415,18 +422,6 @@ export function createFx({ world, ui, hooks }) {
       }
       burst(x, 0.8, z, { tex: 'star', additive: true, count: 8, life: [0.3, 0.6], speed: [2, 4], size: [0.25, 0.45], color: '#ffe066' });
       animal(id)?.squash();
-    },
-
-    [EVENT.GRAB]: ({ id, target }) => {
-      sound('pop', { volume: isMe(id) || isMe(target) ? 0.7 : 0.35, rate: 0.75 });
-      animal(target)?.squash();
-      if (isMe(target)) hooks.vibrate?.(40);
-    },
-
-    [EVENT.GRAB_RELEASE]: ({ id, target, thrown }) => {
-      if (!thrown) return;
-      sound('whoosh', { volume: isMe(id) || isMe(target) ? 0.8 : 0.4, rate: 0.8 });
-      if (isMe(id) || isMe(target)) world.shakeCamera(FX.SHAKE_HIT);
     },
 
     [EVENT.HILL_NEXT]: () => {

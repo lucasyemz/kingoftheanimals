@@ -5,7 +5,7 @@
 import {
   NET, ROOM, PHYSICS, ARENA, MATCH, POWERUPS, BOTS, EMOTES,
   SCENARIOS, SCENARIO_ORDER, ANIMALS, PLAYER_COLORS, MODES, POTATO, QUICK, RECONNECT,
-  MINIGAMES, FORMATS, SHOW_POOL, SHOW, JUMPROPE, BALLS, GRAB, HATS, HILL,
+  MINIGAMES, FORMATS, SHOW_POOL, SHOW, JUMPROPE, BALLS, HATS, HILL, HEALTH,
 } from '../shared/constants.js';
 import { MSG, PHASE, PLAYER_STATE as ST, EVENT, JOIN_ERROR } from '../shared/messages.js';
 import { createBrain, botThink } from './bots.js';
@@ -62,8 +62,7 @@ export function movePlayer(p, dt, { control, friction, onDash, onJump }) {
       iz /= len;
     }
     if (ix || iz) {
-      const grabMult = p.grabbed ? GRAB.GRABBED_SPEED : p.grabbing ? GRAB.GRABBER_SPEED : 1;
-      const mult = (coffee ? coffee.speedMult : 1) * (p.potato ? POTATO.HOLDER_SPEED : 1) * (airborne ? PHYSICS.AIR_CONTROL : 1) * grabMult;
+      const mult = (coffee ? coffee.speedMult : 1) * (p.potato ? POTATO.HOLDER_SPEED : 1) * (airborne ? PHYSICS.AIR_CONTROL : 1);
       const maxSpeed = PHYSICS.MAX_SPEED * mult;
       const before = Math.hypot(p.vx, p.vz);
       p.vx += ix * PHYSICS.ACCEL * mult * dt;
@@ -91,7 +90,7 @@ export function movePlayer(p, dt, { control, friction, onDash, onJump }) {
       p.dashBuffer = 0;
       onDash?.(dx / dl, dz / dl);
     }
-    if (p.jumpBuffer > 0 && !airborne && p.st === ST.ALIVE && !p.grabbed) {
+    if (p.jumpBuffer > 0 && !airborne && p.st === ST.ALIVE) {
       p.vy = PHYSICS.JUMP_SPEED;
       p.y = 1e-3;
       p.jumpBuffer = 0;
@@ -189,11 +188,9 @@ export class Game {
       lastEmote: -Infinity,
       potato: false,
       hat: 'none',
-      grab: null,            // { id, t }: quem ele está segurando
-      grabbing: false,
-      grabbed: false,
-      grabHeld: false,
-      grabCd: 0,
+      hp: HEALTH.MAX,        // vida: quanto menos, mais longe o empurrão joga
+      hits: [],              // últimos dashes recebidos { by, t } (dois seguidos = tonto)
+      dazedUntil: -Infinity,
       eliminated: false,     // Eliminação: caiu numa fase e assiste até o fim
       token: null,           // segredo para voltar à partida se a conexão cair
       ...fields,
@@ -393,7 +390,7 @@ export class Game {
         x: Math.cos(a) * ARENA.SPAWN_RADIUS,
         z: Math.sin(a) * ARENA.SPAWN_RADIUS,
         vx: 0, vz: 0, y: 0, vy: 0, jumpBuffer: 0,
-        grab: null, grabbing: false, grabbed: false, grabCd: 0, layer: 0,
+        layer: 0, hp: HEALTH.MAX, hits: [], dazedUntil: -Infinity,
         dir: Math.atan2(-Math.cos(a), -Math.sin(a)), // virado para o centro
         st: ST.ALIVE, stT: 0,
         dashCd: 0, dashBuffer: 0,
@@ -590,6 +587,7 @@ export class Game {
         const nx = d > 1e-4 ? dx / d : Math.cos(this.rng() * 7);
         const nz = d > 1e-4 ? dz / d : Math.sin(this.rng() * 7);
         const k = cfg.impulse * this.pushTaken(q);
+        this.damage(q, HEALTH.BOMB_DAMAGE);
         q.vx += nx * k;
         q.vz += nz * k;
         q.st = ST.STUNNED;
@@ -605,8 +603,24 @@ export class Game {
     return PHYSICS.ANIMAL_RADIUS * (p.pu === 'heavy' ? POWERUPS.TYPES.heavy.scale : 1);
   }
 
-  pushTaken(p) {
+  // Peso do bicho (Heavy empurra mais e é empurrado menos)
+  heaviness(p) {
     return p.pu === 'heavy' ? POWERUPS.TYPES.heavy.pushTakenMult : 1;
+  }
+
+  // Quanto um golpe joga o bicho longe: peso × vida (sem vida, HEALTH.KNOCKBACK_EMPTY ×)
+  knockback(p) {
+    const lost = 1 - clamp(p.hp ?? HEALTH.MAX, 0, HEALTH.MAX) / HEALTH.MAX;
+    return HEALTH.KNOCKBACK_FULL + (HEALTH.KNOCKBACK_EMPTY - HEALTH.KNOCKBACK_FULL) * lost;
+  }
+
+  pushTaken(p) {
+    return this.heaviness(p) * this.knockback(p);
+  }
+
+  damage(p, n) {
+    if (this.debug.tutorial || n <= 0) return;
+    p.hp = Math.max(0, (p.hp ?? HEALTH.MAX) - n * (p.pu === 'heavy' ? 0.5 : 1));
   }
 
   touch(victim, by) {
@@ -616,7 +630,7 @@ export class Game {
 
   // ---------- Física ----------
 
-  setInput(id, { x, z, dash, jump, grab, seq } = {}) {
+  setInput(id, { x, z, dash, jump, seq } = {}) {
     const p = this.players.get(id);
     if (!p || p.bot) return;
     p.inputX = clamp(num(x), -1, 1);
@@ -624,7 +638,6 @@ export class Game {
     p.inputSeq = Math.max(p.inputSeq ?? 0, Math.floor(num(seq)));
     if (dash) p.dashBuffer = PHYSICS.DASH_BUFFER;
     if (jump) p.jumpBuffer = PHYSICS.JUMP_BUFFER;
-    p.grabHeld = !!grab;
   }
 
   physics(dt, control) {
@@ -658,86 +671,7 @@ export class Game {
       });
     }
 
-    if (control) this.updateGrabs(dt);
     this.collide(list.filter(isStanding));
-  }
-
-  // ---------- Agarrar ----------
-  // Segurando o botão perto de alguém na frente: agarra. Soltando: arremessa para a
-  // frente. Dash de quem foi agarrado solta; o agarrão dura no máximo GRAB.MAX_TIME.
-
-  updateGrabs(dt) {
-    const list = this.participants;
-    for (const p of list) {
-      p.grabCd = Math.max(0, p.grabCd - dt);
-      if (p.grab) continue;
-      if (!p.grabHeld || p.grabCd > 0 || p.st !== ST.ALIVE || p.y > 0 || p.grabbed) continue;
-      const fx = Math.sin(p.dir);
-      const fz = Math.cos(p.dir);
-      let best = null;
-      let bestD = Infinity;
-      for (const q of list) {
-        if (q === p || !isStanding(q) || q.grabbed || q.grab || (q.y ?? 0) > 0.5 || (q.layer ?? 0) !== (p.layer ?? 0)) continue;
-        const dx = q.x - p.x;
-        const dz = q.z - p.z;
-        const d = Math.hypot(dx, dz);
-        if (d > GRAB.REACH || d < 1e-3 || (dx * fx + dz * fz) / d < GRAB.CONE) continue;
-        if (d < bestD) {
-          bestD = d;
-          best = q;
-        }
-      }
-      if (!best) {
-        p.grabCd = 0.25; // errou: tenta de novo daqui a pouco
-        continue;
-      }
-      p.grab = { id: best.id, t: 0 };
-      p.grabbing = true;
-      best.grabbed = true;
-      this.touch(best, p);
-      this.event(EVENT.GRAB, { id: p.id, target: best.id });
-    }
-    for (const p of list) {
-      if (!p.grab) continue;
-      const q = this.players.get(p.grab.id);
-      p.grab.t += dt;
-      const d = q ? Math.hypot(q.x - p.x, q.z - p.z) : Infinity;
-      const broken = !q || !isStanding(q) || q.st === ST.DASHING || !isStanding(p) || p.st === ST.DASHING || d > GRAB.BREAK_DIST;
-      if (broken || p.grab.t >= GRAB.MAX_TIME || !p.grabHeld) {
-        this.releaseGrab(p, q, !broken && p.grab.t > 0.15);
-        continue;
-      }
-      // Segura o outro na frente, puxando com uma mola firme
-      const fx = Math.sin(p.dir);
-      const fz = Math.cos(p.dir);
-      const tx = p.x + fx * GRAB.HOLD_DIST;
-      const tz = p.z + fz * GRAB.HOLD_DIST;
-      const k = Math.min(1, 12 * dt);
-      q.x += (tx - q.x) * k;
-      q.z += (tz - q.z) * k;
-      q.vx += (p.vx - q.vx) * k;
-      q.vz += (p.vz - q.vz) * k;
-    }
-  }
-
-  releaseGrab(p, q, thrown) {
-    p.grab = null;
-    p.grabbing = false;
-    p.grabCd = GRAB.COOLDOWN;
-    if (q) {
-      q.grabbed = false;
-      if (thrown) {
-        const k = GRAB.THROW * this.pushTaken(q);
-        q.vx = p.vx * 0.5 + Math.sin(p.dir) * k;
-        q.vz = p.vz * 0.5 + Math.cos(p.dir) * k;
-        if (q.st === ST.ALIVE) {
-          q.st = ST.STUNNED;
-          q.stT = GRAB.STUN;
-        }
-        this.touch(q, p);
-      }
-    }
-    this.event(EVENT.GRAB_RELEASE, { id: p.id, target: q?.id ?? null, thrown: !!thrown });
   }
 
   collide(list) {
@@ -751,7 +685,6 @@ export class Game {
         const min = this.radiusOf(a) + this.radiusOf(b);
         if (d >= min) continue;
         if (Math.abs((a.y ?? 0) - (b.y ?? 0)) > PHYSICS.JUMP_OVER) continue; // um passou por cima do outro
-        if (a.grab?.id === b.id || b.grab?.id === a.id) continue; // agarrados não se empurram
         if ((a.layer ?? 0) !== (b.layer ?? 0)) continue; // andares diferentes (Chão que some)
         if (d < 1e-4) {
           dx = 1;
@@ -760,8 +693,8 @@ export class Game {
         }
         const nx = dx / d;
         const nz = dz / d;
-        const ta = this.pushTaken(a);
-        const tb = this.pushTaken(b);
+        const ta = this.heaviness(a);
+        const tb = this.heaviness(b);
         const wa = ta / (ta + tb);
         const wb = tb / (ta + tb);
 
@@ -777,10 +710,13 @@ export class Game {
         const aDash = a.st === ST.DASHING;
         const bDash = b.st === ST.DASHING;
         const J = (aDash || bDash ? PHYSICS.DASH_PUSH_FACTOR : PHYSICS.PUSH_FACTOR) * vrel;
-        a.vx -= nx * J * wa;
-        a.vz -= nz * J * wa;
-        b.vx += nx * J * wb;
-        b.vz += nz * J * wb;
+        // o empurrão de dash cresce com a vida perdida de quem leva
+        const ka = bDash ? this.knockback(a) : 1;
+        const kb = aDash ? this.knockback(b) : 1;
+        a.vx -= nx * J * wa * ka;
+        a.vz -= nz * J * wa * ka;
+        b.vx += nx * J * wb * kb;
+        b.vz += nz * J * wb * kb;
         this.touch(a, b);
         this.touch(b, a);
 
@@ -793,13 +729,26 @@ export class Game {
   dashHit(attacker, target) {
     attacker.st = ST.ALIVE;
     attacker.stT = 0;
+    // Dois bichos diferentes acertam o mesmo alvo em pouco tempo: ele fica tonto
+    const now = this.simTime;
+    target.hits = (target.hits ?? []).filter((h) => now - h.t < HEALTH.DOUBLE_HIT_WINDOW && h.by !== attacker.id);
+    const dazed = target.hits.length > 0 && now - (target.dazedUntil ?? -Infinity) > HEALTH.DAZE_IMMUNITY;
+    target.hits.push({ by: attacker.id, t: now });
+    this.damage(target, HEALTH.DASH_DAMAGE + (dazed ? HEALTH.DAZE_DAMAGE : 0));
     target.st = ST.STUNNED;
-    target.stT = PHYSICS.STUN_DURATION;
+    if (dazed) {
+      target.stT = HEALTH.DAZE_DURATION;
+      target.dazedUntil = now + HEALTH.DAZE_DURATION;
+      target.hits = [];
+    } else {
+      target.stT = Math.max(target.stT ?? 0, PHYSICS.STUN_DURATION);
+    }
     this.event(EVENT.DASH_HIT, {
       id: attacker.id,
       target: target.id,
       x: r2((attacker.x + target.x) / 2),
       z: r2((attacker.z + target.z) / 2),
+      dazed: dazed || undefined,
     });
   }
 
@@ -854,8 +803,6 @@ export class Game {
       }
     }
     p.potato = false;
-    if (p.grab) this.releaseGrab(p, this.players.get(p.grab.id), false);
-    for (const q of this.participants) if (q.grab?.id === p.id) this.releaseGrab(q, p, false);
     this.event(EVENT.FALL, { id: p.id, by, x: r2(p.x), z: r2(p.z), why });
     if (by && p.id === this.kingId && !afterRound) {
       if (!this.kingslayerId) this.kingslayerId = by;
@@ -1026,7 +973,7 @@ export class Game {
       Object.assign(p, {
         ...spot, vx: 0, vz: 0, y: 0, vy: 0, st: ST.ALIVE, stT: 0, layer: 0,
         dir: Math.atan2(-spot.x, -spot.z), lastToucher: null, respawnAt: null,
-        grab: null, grabbing: false, grabbed: false, potato: false,
+        potato: false, hp: HEALTH.MAX, hits: [], dazedUntil: -Infinity,
       });
       this.event(EVENT.RESPAWN, { id: p.id, x: r2(p.x), z: r2(p.z) });
     }
@@ -1161,8 +1108,7 @@ export class Game {
         puT: r2(Math.max(0, p.puT)),
         seq: p.bot ? undefined : p.ackSeq ?? 0,
         potato: p.potato || undefined,
-        grab: p.grab?.id,
-        grabbed: p.grabbed || undefined,
+        hp: Math.round(p.hp),
         layer: p.layer || undefined,
       })),
       powerups: this.powerups,

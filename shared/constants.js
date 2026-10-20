@@ -82,7 +82,8 @@ export const PHYSICS = {
   AIR_CONTROL: 0.45,          // aceleração no ar = 45 % da do chão
   AIR_FRICTION: 0.985,        // atrito por tick no ar (quase nenhum)
   JUMP_BUFFER: 0.12,          // pulo apertado um pouco antes de aterrissar ainda vale
-  JUMP_OVER: 0.75,            // diferença de altura acima da qual dois bichos não se tocam
+  JUMP_OVER: 0.35,            // diferença de altura acima da qual dois bichos não se tocam:
+                              // quase o pulo todo (~0,5 de 0,6 s) passa por cima de empurrão e dash
   // definido: o impulso da colisão é dividido entre os dois bichos pelo "quanto
   // aceita ser empurrado" (1 normal, 0,25 Heavyweight). Dois iguais: metade cada.
 };
@@ -170,18 +171,20 @@ export const BALLS = {
   RING_INTERVAL_MULT: 1.3,
 };
 
-// Agarrar: segurar outro bicho na frente e soltar para arremessar.
-export const GRAB = {
-  REACH: 1.55,                // distância entre centros para pegar
-  CONE: 0.25,                 // cos do ângulo na frente
-  HOLD_DIST: 1.15,
-  MAX_TIME: 1.6,
-  THROW: 7.5,
-  STUN: 0.25,
-  COOLDOWN: 1.4,
-  GRABBER_SPEED: 0.7,
-  GRABBED_SPEED: 0.3,
-  BREAK_DIST: 2.4,
+// Vida (estilo Brawlhalla): cada golpe tira vida e, quanto menos vida, mais longe o
+// próximo empurrão joga. Ninguém morre por vida: só caindo. Volta cheia a cada rodada.
+export const HEALTH = {
+  MAX: 100,
+  DASH_DAMAGE: 5,
+  BOMB_DAMAGE: 12,
+  BALL_DAMAGE: 8,
+  KNOCKBACK_FULL: 0.75,       // com vida cheia o empurrão de dash é mais fraco que antes
+  KNOCKBACK_EMPTY: 1.7,       // sem vida, 1,7 ×
+  // Tonto: dois bichos diferentes acertam dash no mesmo alvo em até 0,7 s
+  DOUBLE_HIT_WINDOW: 0.7,
+  DAZE_DURATION: 1.2,         // sem controle
+  DAZE_DAMAGE: 5,             // extra no segundo golpe
+  DAZE_IMMUNITY: 1.5,         // depois de ficar tonto, 1,5 s sem poder ficar tonto de novo
 };
 
 // Chapéus (comprados com moedas no menu; preço em moedas)
@@ -284,9 +287,9 @@ export const BOTS = {
   NAME_ADJECTIVE_COUNT: 12,   // strings.botAdjectives precisa ter 12 itens ("Brakeless", "Turbo"...)
   DIFFICULTY: {
     //               reação  mira±  borda  ignora PU  posiciona  desvia  pula na hora certa (barra, dash, bomba)
-    easy:   { reactionMs: 600, aimErrorDeg: 35, edgeSense: 1.5, ignorePowerup: 0.6, positionChance: 0,   dodgeChance: 0,   jumpSkill: 0.25, grabChance: 0.1 },
-    medium: { reactionMs: 300, aimErrorDeg: 15, edgeSense: 3,   ignorePowerup: 0.3, positionChance: 0.5, dodgeChance: 0.3, jumpSkill: 0.6,  grabChance: 0.25 },
-    hard:   { reactionMs: 120, aimErrorDeg: 5,  edgeSense: 3.5, ignorePowerup: 0,   positionChance: 1,   dodgeChance: 0.7, jumpSkill: 0.9,  grabChance: 0.4 },
+    easy:   { reactionMs: 600, aimErrorDeg: 35, edgeSense: 1.5, ignorePowerup: 0.6, positionChance: 0,   dodgeChance: 0,   jumpSkill: 0.25 },
+    medium: { reactionMs: 300, aimErrorDeg: 15, edgeSense: 3,   ignorePowerup: 0.3, positionChance: 0.5, dodgeChance: 0.3, jumpSkill: 0.6 },
+    hard:   { reactionMs: 120, aimErrorDeg: 5,  edgeSense: 3.5, ignorePowerup: 0,   positionChance: 1,   dodgeChance: 0.7, jumpSkill: 0.9 },
   },
 };
 
