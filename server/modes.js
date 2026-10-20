@@ -4,6 +4,7 @@
 
 import { PHYSICS, POTATO, HILL } from '../shared/constants.js';
 import { PLAYER_STATE as ST, EVENT } from '../shared/messages.js';
+import { sweepBar } from './minigames.js';
 
 const r2 = (v) => Math.round(v * 100) / 100;
 const standing = (p) => p.st === ST.ALIVE || p.st === ST.DASHING || p.st === ST.STUNNED;
@@ -103,48 +104,8 @@ function updateSweeper(game, h, dt) {
   s.t += dt;
   if (s.t < h.startAt) return;
   s.angle = (s.angle + h.speed * dt) % (Math.PI * 2);
-  const ux = Math.cos(s.angle);
-  const uz = Math.sin(s.angle);
-  // Para onde a barra anda (giro anti-horário visto de cima, no plano x/z)
-  const nx = -uz;
-  const nz = ux;
-  for (const p of game.participants) {
-    if (!standing(p)) continue;
-    const rad = game.radiusOf(p);
-    const along = p.x * ux + p.z * uz;
-    // O eixo do meio: empurra para fora dele
-    const dc = Math.hypot(p.x, p.z);
-    if (dc < h.hub + rad) {
-      const k = (h.hub + rad) / Math.max(dc, 1e-3);
-      p.x *= k;
-      p.z *= k;
-    }
-    if (along < 0 || along > game.arena.radius + rad) continue;
-    if (p.y > (h.height ?? 0.4)) continue; // pulou por cima da barra
-    const side = p.x * nx + p.z * nz;
-    const reach = h.width + rad;
-    if (Math.abs(side) >= reach) continue;
-    if (side >= 0) {
-      // Na frente da barra: é varrido junto, com um tranco
-      p.x += nx * (reach - side);
-      p.z += nz * (reach - side);
-      const vn = p.vx * nx + p.vz * nz;
-      const target = h.speed * along * 1.25 + h.push * 0.4;
-      if (vn < target) {
-        p.vx += nx * (target - vn);
-        p.vz += nz * (target - vn);
-      }
-    } else {
-      // Atrás da barra: não atravessa
-      p.x -= nx * (reach + side);
-      p.z -= nz * (reach + side);
-      const vn = p.vx * nx + p.vz * nz;
-      if (vn > 0) {
-        p.vx -= nx * vn;
-        p.vz -= nz * vn;
-      }
-    }
-  }
+  s.bar = { angle: s.angle, speed: h.speed, arms: 1, hub: h.hub, width: h.width, push: h.push, y0: 0, y1: h.height ?? 0.4 };
+  sweepBar(game, s.bar);
 }
 
 // ---------- Batata quente ----------

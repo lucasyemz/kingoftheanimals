@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
 import gsap from 'gsap';
 import { io } from 'socket.io-client';
-import { NET, ANIMALS, MATCH, SCENARIOS, EMOTES, POWERUPS, PLAYER_COLORS, PHYSICS, HILL } from '../../shared/constants.js';
+import { NET, ANIMALS, MATCH, SCENARIOS, EMOTES, POWERUPS, PLAYER_COLORS, PHYSICS, HILL, HEX, COINS } from '../../shared/constants.js';
 import { MSG, PHASE, PLAYER_STATE as ST, EVENT } from '../../shared/messages.js';
 import { Game, movePlayer } from '../../server/game.js';
 import { STR } from './strings.js';
@@ -15,7 +15,8 @@ import { createFx } from './fx.js';
 import { createInput } from './input.js';
 import { createUI, createLoading, displayName, colorOf } from './ui.js';
 import { createRules } from './rules.js';
-import { settings, saveSettings, addStats } from './settings.js';
+import { createMinigamesView } from './minigames-view.js';
+import { settings, saveSettings, addStats, wallet, addCoins } from './settings.js';
 
 // ---------- Atalhos de debug (GDD: fora de produção ou com ?debug=1) ----------
 
@@ -132,6 +133,7 @@ const net = {
 const canvas = document.getElementById('game');
 const world = createWorld(canvas);
 const rules = createRules(world);
+const mgView = createMinigamesView(world);
 const labels = new CSS2DRenderer({ element: document.getElementById('labels') });
 const resizeLabels = () => labels.setSize(innerWidth, innerHeight);
 addEventListener('resize', resizeLabels);
@@ -156,6 +158,7 @@ const ui = createUI({
     if (sample) fx.sound('ding', { volume: 0.8 });
   },
   onFullscreen: toggleFullscreen,
+  onHat: (id) => preview?.setHat(id),
   onAnimal: (a) => {
     home.animal = a;
     showPreview();
@@ -235,6 +238,19 @@ let wins = {};
 let quickStarted = false;
 let localDashAt = -Infinity;
 let localJumpAt = -Infinity;
+let matchCoins = 0;
+let lastFall = null;
+let replay = null;
+let replayEndsAt = 0;
+const replayBuf = [];   // últimos ~5 s de states, para o replay
+// Replay: 1,5 s antes da última queda até 0,9 s depois, a 55 % da velocidade
+const REPLAY = { BEFORE: 1500, AFTER: 900, SPEED: 0.55, DELAY: 450 };
+
+function earn(n) {
+  if (tutorial.active || !n) return;
+  matchCoins += n;
+  addCoins(n);
+}
 let freezeUntil = 0;
 let frozenT = 0;
 const states = [];      // buffer para interpolar
@@ -274,7 +290,7 @@ function join(mode, { nickname, animal, code, quick = false, rejoin = null, tuto
   const send = () => {
     myId = net.id; // o lobby pode chegar antes da resposta do join
     const debug = isTutorial ? { ...DEBUG_OPTS, tutorial: true } : DEBUG_OPTS;
-    net.emit(MSG.JOIN, { code, nickname, animal, debug, quick, rejoin }, (res) => {
+    net.emit(MSG.JOIN, { code, nickname, animal, hat: wallet.hat, debug, quick, rejoin }, (res) => {
       if (!res?.ok) {
         myId = null;
         net.leave();
@@ -410,11 +426,12 @@ function syncRoster() {
     let a = animals.get(p.id);
     if (!a) {
       a = createAnimal(p.animal, colorOf(p), { crownModel: crownModel?.clone(), debug: SHOW_DEBUG });
-      a.onLand = (x, z) => fx.landDust(x, z);
+      a.onLand = (x, z, y) => fx.landDust(x, z, y);
       animals.set(p.id, a);
       world.scene.add(a.root);
     }
     a.setLabel(labelHtml(p));
+    a.setHat(p.hat ?? 'none');
     a.setCrown(p.id === lobby.kingId);
   }
   clearPreview();
@@ -440,6 +457,7 @@ function showPreview() {
   clearPreview();
   preview = createAnimal(home.animal, PLAYER_COLORS[0], {});
   preview.setLabel(previewLabel());
+  preview.setHat(wallet.hat);
   world.scene.add(preview.root);
 }
 function previewLabel() {
@@ -533,9 +551,14 @@ function enterLobby() {
   fx.playMusic('lobby');
 }
 
-net.on(MSG.ROUND, ({ round, scenario, mode }) => {
-  if (lobby) Object.assign(lobby, { round, scenario, mode: mode ?? lobby.mode });
+net.on(MSG.ROUND, ({ round, scenario, mode, format, final, qualify }) => {
+  if (lobby) Object.assign(lobby, { round, scenario, roundMode: mode ?? 'classic', format });
+  if (round === 1) matchCoins = 0;
   rules.reset();
+  mgView.reset();
+  replay = null;
+  ui.replay(false);
+  if (!tutorial.active) setTimeout(() => ui.roundIntro(mode ?? 'classic', { final, qualify }), 250);
   ui.objective(null);
   ui.hill(null);
   screen = 'game';
@@ -583,6 +606,8 @@ net.on(MSG.STATE, (s) => {
   s.byId = Object.fromEntries(s.players.map((p) => [p.id, p]));
   states.push(s);
   if (states.length > 90) states.shift();
+  replayBuf.push(s);
+  if (replayBuf.length > 150) replayBuf.shift();
   latest = s;
   debugInfo.tick = s.tick;
   reconcile(s);
@@ -594,8 +619,20 @@ net.on(MSG.EVENT, (ev) => {
     setTimeout(finishTutorial, 2200);
   }
   if (ev.type === EVENT.FALL && !tutorial.active && myId && latest && latest.phase !== PHASE.ROUND_END) {
-    if (ev.by === myId) addStats({ kos: 1 });
+    if (ev.by === myId) {
+      addStats({ kos: 1 });
+      earn(COINS.KO);
+    }
     if (ev.id === myId) addStats({ falls: 1 });
+  }
+  // Replay: guarda onde e quando foi a última queda; no fim da rodada, repete ela
+  if (ev.type === EVENT.FALL && latest) lastFall = { t: latest.t, x: ev.x, z: ev.z };
+  if (ev.type === EVENT.ROUND_END && latest && lastFall && !tutorial.active && latest.t - lastFall.t < 2500) {
+    const from = lastFall.t - REPLAY.BEFORE;
+    const to = lastFall.t + REPLAY.AFTER;
+    const startAt = performance.now() + interpDelay + REPLAY.DELAY;
+    replay = { from, to, startAt, x: lastFall.x, z: lastFall.z, started: false };
+    replayEndsAt = startAt + (to - from) / REPLAY.SPEED;
   }
   // Os efeitos saem no mesmo atraso da imagem interpolada (os do próprio dash já saíram na hora)
   setTimeout(() => fx.handle(ev), interpDelay);
@@ -659,6 +696,7 @@ function reconcile(s) {
     dashCd: (me.dashCd ?? 0) * (me.dashCdMax || PHYSICS.DASH_COOLDOWN),
     dashBuffer: 0, pu: me.pu, puT: me.puT ?? 0, inputX: 0, inputZ: 0, potato: !!me.potato,
     y: me.y ?? 0, vy: me.vy ?? 0, jumpBuffer: 0,
+    grabbing: !!me.grab, grabbed: !!me.grabbed,
   };
   for (const h of predict.history) stepPredicted(h);
   predict.prev = { x: predict.me.x, z: predict.me.z, y: predict.me.y };
@@ -704,18 +742,24 @@ function selfPose(p, now, dt) {
 
 net.on(MSG.SCORE, (score) => {
   wins = score.wins ?? wins;
-  const playing = myId && lobby?.players.some((p) => p.id === myId && !p.spectator);
-  if (playing && score.kind === 'round') addStats({ rounds: 1, roundWins: score.winner === myId ? 1 : 0 });
+  const playing = myId && lobby?.players.some((p) => p.id === myId && (!p.spectator || p.eliminated));
+  if (playing && score.kind === 'round') {
+    addStats({ rounds: 1, roundWins: score.winner === myId ? 1 : 0 });
+    earn(COINS.ROUND + (score.winner === myId && !score.qualified ? COINS.ROUND_WIN : 0) + (score.qualified?.includes(myId) ? COINS.QUALIFY : 0));
+  }
+  if (playing && score.kind === 'match') earn(COINS.MATCH + (score.champion === myId ? COINS.MATCH_WIN : 0));
   if (playing && score.kind === 'match') {
     addStats({ matches: 1, matchWins: score.champion === myId ? 1 : 0 });
   }
   if (score.kind === 'round') {
-    ui.scoreboard(score, lobby, MATCH.ROUND_END_SLOWMO * 1000 + NET.INTERP_DELAY_MS);
+    const replayLeft = replay ? replayEndsAt - performance.now() + 150 : 0;
+    ui.scoreboard(score, lobby, Math.max(MATCH.ROUND_END_SLOWMO * 1000 + NET.INTERP_DELAY_MS, replayLeft));
     setTimeout(() => ui.scores(lobby, wins), NET.INTERP_DELAY_MS);
     return;
   }
   // Pódio
   setTimeout(() => {
+    ui.coinsEarned(matchCoins);
     screen = 'podium';
     document.body.classList.remove('in-game');
     input.setEnabled(false);
@@ -829,11 +873,23 @@ function lerpAngle(a, b, k) {
 
 function sampleState(renderT) {
   while (states.length > 2 && states[1].t <= renderT) states.shift();
-  const a = states[0];
-  const b = states[1];
+  return blend(states[0], states[1], renderT);
+}
+
+// Replay: procura no buffer sem descartar nada
+function sampleAt(buf, t) {
+  let i = 0;
+  while (i < buf.length - 2 && buf[i + 1].t <= t) i++;
+  return blend(buf[i], buf[i + 1], t);
+}
+
+function blend(a, b, renderT) {
   if (!a) return null;
   if (!b || renderT <= a.t) return a;
   const k = Math.min(1, (renderT - a.t) / (b.t - a.t));
+  // Altura absoluta (Chão que some: y é relativa ao andar), para cair de um andar
+  // para o outro sem pulo na tela
+  const gap = HEX.LAYER_GAP;
   return {
     ...b,
     arena: {
@@ -844,7 +900,10 @@ function sampleState(renderT) {
     players: b.players.map((pb) => {
       const pa = a.byId[pb.id];
       if (!pa || pa.st === ST.OUT) return pb;
-      return { ...pb, x: lerp(pa.x, pb.x, k), z: lerp(pa.z, pb.z, k), y: lerp(pa.y ?? 0, pb.y ?? 0, k), dir: lerpAngle(pa.dir, pb.dir, k) };
+      const ya = (pa.y ?? 0) - (pa.layer ?? 0) * gap;
+      const yb = (pb.y ?? 0) - (pb.layer ?? 0) * gap;
+      const y = lerp(ya, yb, k) + (pb.layer ?? 0) * gap;
+      return { ...pb, x: lerp(pa.x, pb.x, k), z: lerp(pa.z, pb.z, k), y, dir: lerpAngle(pa.dir, pb.dir, k) };
     }),
   };
 }
@@ -866,6 +925,7 @@ if (SHOW_DEBUG) {
     predict: () => ({ me: predict.me && { x: predict.me.x, z: predict.me.z, st: predict.me.st }, hist: predict.history.length, view: { ...selfView } }),
     view: () => Object.fromEntries([...animals].map(([id, a]) => [id, [a.root.position.x, a.root.position.z]])),
     crownPreview: () => preview?.setCrown(true),
+    minigames: () => mgView.debug(),
   };
 }
 let frames = 0;
@@ -888,7 +948,25 @@ function frame(now) {
     let renderT = now - clockOffset - interpDelay;
     if (frozen) renderT = frozenT;
     else frozenT = renderT;
-    const s = sampleState(renderT);
+    let s = sampleState(renderT);
+    // Replay em câmera lenta do último empurrão
+    const replaying = replay && now >= replay.startAt;
+    if (replaying) {
+      if (!replay.started) {
+        replay.started = true;
+        ui.replay(true);
+        ui.hideScoreboard();
+        world.focusOn(replay.x, replay.z, 0.6, 0.4);
+      }
+      const t = replay.from + (now - replay.startAt) * REPLAY.SPEED;
+      if (t > replay.to) {
+        replay = null;
+        ui.replay(false);
+        world.focusOn(0, 0, 1, 0.5);
+      } else {
+        s = sampleAt(replayBuf, t) ?? s;
+      }
+    }
     if (s) {
       world.setArenaRadius(s.arena.radius);
       world.syncArena(s.arena.radius);
@@ -899,7 +977,7 @@ function frame(now) {
         const a = animals.get(sp.id);
         if (!a) continue;
         present.add(sp.id);
-        const p = sp.id === myId && sp.st !== ST.OUT ? selfPose(sp, now, dt) : sp;
+        const p = sp.id === myId && sp.st !== ST.OUT && !replaying ? selfPose(sp, now, dt) : sp;
         a.apply(p, animDt);
         if (p.st === ST.DASHING && !frozen) fx.trail(sp.id, a.root.position.x, a.root.position.z, colorOf(lobby?.players.find((q) => q.id === sp.id)));
         if (a.pu !== p.pu) {
@@ -910,6 +988,7 @@ function frame(now) {
       }
       for (const [id, a] of animals) if (!present.has(id)) a.root.visible = false;
       rules.update(s, dt, { animals, colorOf, players: lobbyById() });
+      mgView.update(s, dt, { animals, colorOf, players: lobbyById() });
       if (latest) {
         ui.hud(latest, lobby, myId);
         modeHud(s);
@@ -951,7 +1030,7 @@ function lobbyById() {
 function modeHud(s) {
   const players = lobbyById();
   const pot = s.arena?.potato;
-  if (pot) {
+  if (pot && latest?.phase !== PHASE.ROUND_END) {
     const fuse = Math.ceil(pot.fuse);
     if (pot.id === myId) ui.objective(`💣 ${STR.potatoYou} ${fuse}`, 'danger');
     else ui.objective(`💣 ${displayName(players[pot.id])} · ${fuse}s`);

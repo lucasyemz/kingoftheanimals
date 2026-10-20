@@ -1,10 +1,11 @@
 // HUD, lobby, placar, pódio e emotes. HTML por cima do canvas.
 
 import gsap from 'gsap';
-import { ANIMALS, PLAYER_COLORS, BOTS, ROOM, MATCH, AWARDS, FX, MODES } from '../../shared/constants.js';
+import { ANIMALS, PLAYER_COLORS, BOTS, ROOM, MATCH, AWARDS, FX, MINIGAMES, FORMATS, HATS } from '../../shared/constants.js';
 import { PHASE } from '../../shared/messages.js';
 import { STR } from './strings.js';
-import { settings, saveSettings, stats } from './settings.js';
+import { settings, saveSettings, stats, wallet, equipHat } from './settings.js';
+import { HAT_ICONS } from './hats.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
@@ -50,6 +51,7 @@ export function createUI(handlers) {
             </div>
           </details>
           <button class="link-btn how">${STR.howToPlay}</button>
+          <button class="link-btn wardrobe-open">🎩 ${STR.wardrobe}</button>
         </div>
         <div class="error" aria-live="polite"></div>
       </div>
@@ -76,8 +78,9 @@ export function createUI(handlers) {
         <div class="host-controls">
           <div class="setting mode-setting">
             <span class="field-label">${STR.mode}</span>
-            <div class="segmented">
-              ${MODES.map((m) => `<button class="btn small game-mode" data-mode="${m}">${STR.modes[m]}</button>`).join('')}
+            <div class="mode-grid">
+              ${FORMATS.map((m) => `<button class="btn small game-mode format" data-mode="${m}">${STR.modes[m]}</button>`).join('')}
+              ${MINIGAMES.map((m) => `<button class="btn small game-mode" data-mode="${m}">${STR.modes[m]}</button>`).join('')}
             </div>
           </div>
           <div class="hint mode-hint-text"></div>
@@ -112,6 +115,8 @@ export function createUI(handlers) {
       <ul class="hud-feed"></ul>
       <div class="hud-objective outlined" hidden></div>
       <div class="hud-hill" hidden></div>
+      <div class="round-intro" hidden><div class="intro-name outlined"></div><div class="intro-hint"></div><div class="intro-extra outlined"></div></div>
+      <div class="replay-badge" hidden><span class="rec"></span>${STR.replay}</div>
       <div class="tutorial-box" hidden><div class="tutorial-step outlined"></div><button class="btn small tutorial-skip">${STR.tutorial.skip}</button></div>
       <div class="hurt-flash"></div>
     </section>
@@ -131,6 +136,7 @@ export function createUI(handlers) {
       <div class="podium-head">
         <div class="field-label">${STR.awards.champion}</div>
         <div class="champion outlined"></div>
+        <div class="coins-earned outlined" hidden></div>
       </div>
       <div class="panel awards"></div>
       <div class="podium-actions">
@@ -158,6 +164,14 @@ export function createUI(handlers) {
         <button class="btn primary close-settings">${STR.close}</button>
       </div>
     </section>
+    <section class="overlay wardrobe-modal" hidden>
+      <div class="panel wardrobe-panel">
+        <div class="wardrobe-head"><strong class="settings-title">${STR.wardrobe}</strong><strong class="wallet-coins"></strong></div>
+        <div class="hat-grid"></div>
+        <div class="hint">${STR.wardrobeHint}</div>
+        <button class="btn primary close-wardrobe">${STR.close}</button>
+      </div>
+    </section>
     <div class="toast"></div>
     <div class="rotate-hint"><div class="outlined">${STR.rotatePhone}</div></div>
   `;
@@ -169,6 +183,7 @@ export function createUI(handlers) {
     scoreboard: $('.scoreboard', root),
     podium: $('.podium', root),
     settings: $('.settings-modal', root),
+    wardrobe: $('.wardrobe-modal', root),
   };
 
   // ---------- Home ----------
@@ -261,6 +276,48 @@ export function createUI(handlers) {
   fsBtn.hidden = !document.fullscreenEnabled;
   fsBtn.addEventListener('click', () => handlers.onFullscreen?.());
   syncSettings();
+
+  function renderStats() {
+    const st = $('.home-stats', root);
+    st.hidden = !stats.rounds && !wallet.coins;
+    st.innerHTML = `<span class="stats-title">${STR.statsTitle}</span>` +
+      STR.statsLine(stats).map(([icon, n, label]) => `<span class="stat"><b>${icon} ${n}</b> ${label}</span>`).join('') +
+      `<span class="stat"><b>${STR.coins(wallet.coins)}</b></span>`;
+  }
+
+  // ---------- Guarda-roupa ----------
+  const wardrobeEl = $('.wardrobe-modal', root);
+  function renderWardrobe() {
+    $('.wallet-coins', root).textContent = STR.coins(wallet.coins);
+    $('.hat-grid', root).innerHTML = Object.entries(HATS).map(([id, price]) => {
+      const owned = wallet.owned.includes(id);
+      const on = wallet.hat === id;
+      const tag = on ? STR.equipped : owned ? STR.equip : STR.buy(price);
+      const poor = !owned && wallet.coins < price;
+      return `<button class="hat-card${on ? ' on' : ''}${poor ? ' poor' : ''}" data-hat="${id}"><span class="hat-icon">${HAT_ICONS[id]}</span><span class="hat-name">${esc(STR.hats[id])}</span><span class="hat-tag">${tag}</span></button>`;
+    }).join('');
+  }
+  $('.wardrobe-open', root).addEventListener('click', () => {
+    renderWardrobe();
+    wardrobeEl.hidden = false;
+  });
+  $('.close-wardrobe', root).addEventListener('click', () => {
+    wardrobeEl.hidden = true;
+    renderStats();
+  });
+  wardrobeEl.addEventListener('click', (e) => {
+    if (e.target === wardrobeEl) wardrobeEl.hidden = true;
+    const card = e.target.closest('.hat-card');
+    if (!card) return;
+    const id = card.dataset.hat;
+    if (!equipHat(id, HATS[id])) {
+      toast(STR.needCoins(HATS[id] - wallet.coins));
+      gsap.fromTo(card, { x: -8 }, { x: 0, duration: 0.4, ease: 'elastic.out(1.2, 0.3)' });
+      return;
+    }
+    renderWardrobe();
+    handlers.onHat?.(id);
+  });
   $('.bots-minus', root).addEventListener('click', () => handlers.onSettings({ bots: (lobbyState?.bots ?? 0) - 1 }));
   $('.bots-plus', root).addEventListener('click', () => handlers.onSettings({ bots: (lobbyState?.bots ?? 0) + 1 }));
   root.querySelectorAll('.diff').forEach((b) => b.addEventListener('click', () => handlers.onSettings({ difficulty: b.dataset.diff })));
@@ -305,10 +362,7 @@ export function createUI(handlers) {
       joinLink.hidden = !linkCode;
       joinLink.textContent = STR.joinRoomCode(linkCode);
       $('.error', root).textContent = '';
-      const st = $('.home-stats', root);
-      st.hidden = !stats.rounds;
-      st.innerHTML = `<span class="stats-title">${STR.statsTitle}</span>` +
-        STR.statsLine(stats).map(([icon, n, label]) => `<span class="stat"><b>${icon} ${n}</b> ${label}</span>`).join('');
+      renderStats();
       if (!nickname && !matchMedia('(pointer: coarse)').matches) setTimeout(() => nickInput.focus(), 300);
     },
 
@@ -370,7 +424,8 @@ export function createUI(handlers) {
     },
 
     hud(state, lobby, myId) {
-      $('.hud-round', root).textContent = `${STR.round(state.round)}`;
+      const mg = lobby?.roundMode && lobby.roundMode !== 'classic' ? ` · ${STR.modes[lobby.roundMode]}` : '';
+      $('.hud-round', root).textContent = `${STR.round(state.round)}${mg}`;
       $('.hud-scenario', root).textContent = STR.scenarios[lobby?.scenario] ?? '';
       const t = state.timeLeft;
       $('.hud-timer', root).textContent =
@@ -381,13 +436,13 @@ export function createUI(handlers) {
     },
 
     scores(lobby, wins = {}) {
-      const list = lobby.players.filter((p) => !p.spectator);
+      const list = lobby.players.filter((p) => !p.spectator || p.eliminated);
       $('.hud-scores', root).innerHTML = list
         .map((p) => {
           const n = wins[p.id] ?? p.wins ?? 0;
           const pips = Array.from({ length: MATCH.WINS_TO_WIN }, (_, i) => `<i class="${i < n ? 'on' : ''}"></i>`).join('');
           const crown = p.id === lobby.kingId ? '👑' : '';
-          return `<div class="score-row"><span class="dot" style="background:${colorOf(p)}"></span><span class="name outlined">${crown}${esc(displayName(p))}</span><span class="pips" style="--c:${colorOf(p)}">${pips}</span></div>`;
+          return `<div class="score-row${p.eliminated ? ' out' : ''}"><span class="dot" style="background:${colorOf(p)}"></span><span class="name outlined">${crown}${esc(displayName(p))}</span><span class="pips" style="--c:${colorOf(p)}">${pips}</span></div>`;
         })
         .join('');
     },
@@ -413,6 +468,21 @@ export function createUI(handlers) {
       const byId = Object.fromEntries(lobby.players.map((p) => [p.id, p]));
       const winner = byId[score.winner];
       $('.score-title', root).textContent = STR.winsRound(displayName(winner));
+      if (score.qualified) {
+        // Eliminação: quem passou e quem saiu
+        $('.score-title', root).textContent = STR.qualifiedTitle;
+        const row = (id, ok) => {
+          const p = byId[id];
+          return p ? `<li class="${ok ? 'winner' : 'out'}"><span class="dot" style="background:${colorOf(p)}"></span>${nameTag(p)}<span class="q-mark">${ok ? '✔' : '✖'}</span></li>` : '';
+        };
+        $('.score-list', root).innerHTML = score.qualified.map((id) => row(id, true)).join('') + (score.eliminated ?? []).map((id) => row(id, false)).join('');
+        $('.score-highlight', root).textContent = score.next ? STR.nextUp(STR.modes[score.next]) : '';
+        setTimeout(() => {
+          show('scoreboard', true);
+          gsap.fromTo(screens.scoreboard.firstElementChild, { y: 30, opacity: 0 }, { y: 0, opacity: 1, duration: 0.35, ease: 'back.out(2)' });
+        }, delay);
+        return;
+      }
       const rows = Object.entries(score.wins)
         .sort((a, b) => b[1] - a[1])
         .map(([id, n]) => {
@@ -427,6 +497,7 @@ export function createUI(handlers) {
       let line = '';
       if (h?.type === 'knockouts') line = STR.knockedOut(displayName(hp), h.n);
       else if (h?.type === 'selfKo') line = `${STR.fellAlone(displayName(hp))} · ${STR.selfKo}`;
+      if (score.next) line = [line, STR.nextUp(STR.modes[score.next])].filter(Boolean).join(' · ');
       $('.score-highlight', root).textContent = line;
       setTimeout(() => {
         show('scoreboard', true);
@@ -487,6 +558,29 @@ export function createUI(handlers) {
       if (!rows) return;
       el.innerHTML = `<div class="hill-title outlined">${STR.hillTitle}${contested ? ` · <span class="contested">${STR.hillContested}</span>` : ''}</div>` +
         rows.map(({ p, v, me }) => `<div class="hill-row${me ? ' mine' : ''}"><span class="name outlined" style="color:${colorOf(p)}">${esc(displayName(p))}</span><span class="bar"><i style="width:${Math.round(v * 100)}%;background:${colorOf(p)}"></i></span></div>`).join('');
+    },
+
+    // Cartão grande no começo da rodada: nome do minijogo e como joga
+    roundIntro(mode, { final = false, qualify = null } = {}) {
+      const el = $('.round-intro', root);
+      $('.intro-name', root).textContent = STR.modes[mode] ?? '';
+      $('.intro-hint', root).textContent = STR.modeHints[mode] ?? '';
+      $('.intro-extra', root).textContent = final ? STR.roundIntroFinal : qualify ? STR.roundIntroQualify(qualify) : '';
+      el.hidden = false;
+      gsap.killTweensOf(el);
+      gsap.fromTo(el, { scale: 0.6, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.4, ease: 'back.out(2)' });
+      gsap.to(el, { opacity: 0, duration: 0.4, delay: 2.6, onComplete: () => (el.hidden = true) });
+    },
+
+    replay(on) {
+      $('.replay-badge', root).hidden = !on;
+      document.body.classList.toggle('replaying', on);
+    },
+
+    coinsEarned(n) {
+      const el = $('.coins-earned', root);
+      el.hidden = !n;
+      el.textContent = STR.coinsEarned(n);
     },
 
     tutorialStep(text) {

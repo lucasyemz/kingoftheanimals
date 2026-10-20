@@ -27,6 +27,32 @@ export function saveSettings(patch) {
   localStorage.setItem(KEY, JSON.stringify(settings));
 }
 
+// ---------- Moedas e chapéus ----------
+
+const WALLET_KEY = 'kota.wallet';
+export const wallet = read(WALLET_KEY, { coins: 0, owned: ['none'], hat: 'none' });
+
+function saveWallet() {
+  localStorage.setItem(WALLET_KEY, JSON.stringify(wallet));
+}
+
+export function addCoins(n) {
+  wallet.coins += n;
+  saveWallet();
+}
+
+// Compra (se não tem) e veste. Retorna false se faltam moedas.
+export function equipHat(id, price) {
+  if (!wallet.owned.includes(id)) {
+    if (wallet.coins < price) return false;
+    wallet.coins -= price;
+    wallet.owned.push(id);
+  }
+  wallet.hat = id;
+  saveWallet();
+  return true;
+}
+
 // ---------- Estatísticas ----------
 
 const STATS_DEFAULTS = { matches: 0, matchWins: 0, rounds: 0, roundWins: 0, kos: 0, falls: 0, bestStreak: 0 };

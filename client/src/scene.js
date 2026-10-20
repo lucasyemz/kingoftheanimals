@@ -344,6 +344,11 @@ export function createWorld(canvas) {
     world.setArenaRadius(ARENA.RADIUS, true);
   };
 
+  // Chão que some: a arena de anéis some e os hexágonos aparecem no lugar
+  world.setArenaHidden = (hidden) => {
+    arena.visible = !hidden;
+  };
+
   world.setWarning = (index) => {
     world.warningRing = index;
   };

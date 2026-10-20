@@ -401,6 +401,39 @@ export function createFx({ world, ui, hooks }) {
       }
     },
 
+    // ---------- Minijogos e agarrar ----------
+
+    [EVENT.BALL]: () => {
+      sound('rumble', { volume: 0.35, rate: 1.3 });
+    },
+
+    [EVENT.BALL_HIT]: ({ id, x, z }) => {
+      sound('boing', { rate: rand(0.6, 0.75), volume: 0.8 });
+      if (isMe(id)) {
+        world.shakeCamera(FX.SHAKE_HIT_ME);
+        hooks.vibrate?.(60);
+      }
+      burst(x, 0.8, z, { tex: 'star', additive: true, count: 8, life: [0.3, 0.6], speed: [2, 4], size: [0.25, 0.45], color: '#ffe066' });
+      animal(id)?.squash();
+    },
+
+    [EVENT.GRAB]: ({ id, target }) => {
+      sound('pop', { volume: isMe(id) || isMe(target) ? 0.7 : 0.35, rate: 0.75 });
+      animal(target)?.squash();
+      if (isMe(target)) hooks.vibrate?.(40);
+    },
+
+    [EVENT.GRAB_RELEASE]: ({ id, target, thrown }) => {
+      if (!thrown) return;
+      sound('whoosh', { volume: isMe(id) || isMe(target) ? 0.8 : 0.4, rate: 0.8 });
+      if (isMe(id) || isMe(target)) world.shakeCamera(FX.SHAKE_HIT);
+    },
+
+    [EVENT.LAYER_DROP]: ({ id }) => {
+      sound('whoosh', { volume: isMe(id) ? 0.6 : 0.25, rate: 0.7 });
+      if (isMe(id)) world.shakeCamera(FX.SHAKE_RING);
+    },
+
     [EVENT.POTATO_BOOM]: ({ id, x, z }) => {
       sound('explosion', { volume: 1 });
       world.shakeCamera(isMe(id) ? FX.SHAKE_BOMB : FX.SHAKE_HIT_ME);
@@ -434,8 +467,8 @@ export function createFx({ world, ui, hooks }) {
     localJump() {
       sound('pop', { volume: 0.45, rate: rand(1.5, 1.8) });
     },
-    landDust(x, z) {
-      burst(x, 0.1, z, { tex: 'smoke', count: 6, life: [0.25, 0.5], speed: [0.8, 1.8], size: [0.25, 0.45], color: '#e8dcc8', radius: 0.35 });
+    landDust(x, z, y = 0) {
+      burst(x, y + 0.1, z, { tex: 'smoke', count: 6, life: [0.25, 0.5], speed: [0.8, 1.8], size: [0.25, 0.45], color: '#e8dcc8', radius: 0.35 });
     },
     localDash(a) {
       sound('whoosh', { volume: 0.6, rate: rand(0.9, 1.15) });

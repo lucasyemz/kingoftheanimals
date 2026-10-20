@@ -5,10 +5,12 @@
 import {
   NET, ROOM, PHYSICS, ARENA, MATCH, POWERUPS, BOTS, EMOTES,
   SCENARIOS, SCENARIO_ORDER, ANIMALS, PLAYER_COLORS, MODES, POTATO, QUICK, RECONNECT,
+  MINIGAMES, FORMATS, SHOW_POOL, SHOW, JUMPROPE, BALLS, GRAB, HATS,
 } from '../shared/constants.js';
 import { MSG, PHASE, PLAYER_STATE as ST, EVENT, JOIN_ERROR } from '../shared/messages.js';
 import { createBrain, botThink } from './bots.js';
 import { resetRoundRules, updateHazard, inOpenHole, updatePotato, potatoContact, updateHill, rulesPayload } from './modes.js';
+import { resetMinigame, updateMinigame, onMissingFloor, minigamePayload } from './minigames.js';
 
 const DIFFICULTIES = Object.keys(BOTS.DIFFICULTY);
 const POWERUP_TYPES = Object.keys(POWERUPS.TYPES);
@@ -59,7 +61,8 @@ export function movePlayer(p, dt, { control, friction, onDash, onJump }) {
       iz /= len;
     }
     if (ix || iz) {
-      const mult = (coffee ? coffee.speedMult : 1) * (p.potato ? POTATO.HOLDER_SPEED : 1) * (airborne ? PHYSICS.AIR_CONTROL : 1);
+      const grabMult = p.grabbed ? GRAB.GRABBED_SPEED : p.grabbing ? GRAB.GRABBER_SPEED : 1;
+      const mult = (coffee ? coffee.speedMult : 1) * (p.potato ? POTATO.HOLDER_SPEED : 1) * (airborne ? PHYSICS.AIR_CONTROL : 1) * grabMult;
       const maxSpeed = PHYSICS.MAX_SPEED * mult;
       const before = Math.hypot(p.vx, p.vz);
       p.vx += ix * PHYSICS.ACCEL * mult * dt;
@@ -87,7 +90,7 @@ export function movePlayer(p, dt, { control, friction, onDash, onJump }) {
       p.dashBuffer = 0;
       onDash?.(dx / dl, dz / dl);
     }
-    if (p.jumpBuffer > 0 && !airborne && p.st === ST.ALIVE) {
+    if (p.jumpBuffer > 0 && !airborne && p.st === ST.ALIVE && !p.grabbed) {
       p.vy = PHYSICS.JUMP_SPEED;
       p.y = 1e-3;
       p.jumpBuffer = 0;
@@ -121,13 +124,15 @@ export class Game {
     this.rng = rng;
     this.public = isPublic;   // Partida rápida: começa sozinha e volta ao lobby sozinha
     this.autoStartT = null;   // segundos até começar (só sala pública)
-    this.mode = 'classic';
+    this.mode = 'classic';     // minijogo da rodada atual
+    this.format = 'normal';    // 'normal' | 'party' | 'show'
+    this.pool = [];
 
     this.players = new Map();
     this.hostId = null;
     this.phase = PHASE.LOBBY;
     this.settings = { bots: BOTS.DEFAULT_COUNT, difficulty: BOTS.DEFAULT_DIFFICULTY, mode: 'classic' };
-    if (isPublic) this.settings.difficulty = QUICK.DIFFICULTY;
+    if (isPublic) Object.assign(this.settings, { difficulty: QUICK.DIFFICULTY, mode: QUICK.MODE });
     this.kingId = null;
 
     this.tickCount = 0;
@@ -181,6 +186,13 @@ export class Game {
       roundKos: 0, roundSelfKo: false, fallR: 0,
       lastEmote: -Infinity,
       potato: false,
+      hat: 'none',
+      grab: null,            // { id, t }: quem ele está segurando
+      grabbing: false,
+      grabbed: false,
+      grabHeld: false,
+      grabCd: 0,
+      eliminated: false,     // Eliminação: caiu numa fase e assiste até o fim
       token: null,           // segredo para voltar à partida se a conexão cair
       ...fields,
     };
@@ -188,7 +200,7 @@ export class Game {
     return p;
   }
 
-  addHuman(id, { nickname, animal } = {}) {
+  addHuman(id, { nickname, animal, hat: hatId } = {}) {
     const name = String(nickname ?? '').trim().slice(0, ROOM.NICKNAME_MAX);
     if (!name) return { ok: false, error: JOIN_ERROR.BAD_NICKNAME };
     if (!ANIMALS.includes(animal)) return { ok: false, error: JOIN_ERROR.BAD_ANIMAL };
@@ -202,7 +214,8 @@ export class Game {
 
     const midMatch = this.phase !== PHASE.LOBBY && this.phase !== PHASE.PODIUM;
     const token = Array.from({ length: 16 }, () => Math.floor(Math.random() * 36).toString(36)).join('');
-    this.newPlayer(id, { nickname: name, animal, spectator: midMatch && ROOM.JOIN_MID_MATCH_AS_SPECTATOR, token });
+    const hat = typeof hatId === 'string' && Object.hasOwn(HATS, hatId) ? hatId : 'none';
+    this.newPlayer(id, { nickname: name, animal, spectator: midMatch && ROOM.JOIN_MID_MATCH_AS_SPECTATOR, token, hat });
     if (!this.hostId) this.hostId = id;
     this.clampBotSetting();
     if (this.public && this.phase === PHASE.LOBBY && this.autoStartT === null) this.autoStartT = QUICK.AUTO_START;
@@ -300,9 +313,11 @@ export class Game {
     this.syncBots();
     if (this.debug.tutorial) for (const b of this.bots) b.bot = createBrain('dummy', this.rng);
     if (this.players.size < ROOM.MIN_PLAYERS) return false;
-    this.mode = this.settings.mode;
+    this.format = FORMATS.includes(this.settings.mode) ? this.settings.mode : 'normal';
+    this.pool = [];
+    this.showFinal = false;
     for (const p of this.players.values()) {
-      Object.assign(p, { wins: 0, kos: 0, selfKos: 0, aliveTime: 0, spectator: false });
+      Object.assign(p, { wins: 0, kos: 0, selfKos: 0, aliveTime: 0, spectator: false, eliminated: false });
     }
     this.kingslayerId = null;
     this.round = this.debug.round ? this.debug.round - 1 : 0;
@@ -317,6 +332,7 @@ export class Game {
     if (this.public) this.autoStartT = QUICK.AUTO_START;
     for (const p of this.players.values()) {
       p.spectator = false;
+      p.eliminated = false;
       p.st = ST.OUT;
     }
     this.sendLobby();
@@ -331,14 +347,38 @@ export class Game {
     this.soapT = 0;
   }
 
+  // Festa e Eliminação: um minijogo diferente por rodada, sem repetir até passar por todos
+  pickMode() {
+    if (this.format === 'normal') return this.settings.mode;
+    if (!this.pool.length) {
+      const list = this.format === 'show' ? [...SHOW_POOL] : [...MINIGAMES];
+      for (let i = list.length - 1; i > 0; i--) {
+        const j = Math.floor(this.rng() * (i + 1));
+        [list[i], list[j]] = [list[j], list[i]];
+      }
+      if (list[0] === this.mode && list.length > 1) list.push(list.shift());
+      this.pool = list;
+    }
+    return this.pool.shift();
+  }
+
   startRound() {
     this.round += 1;
+    this.mode = this.debug.tutorial ? 'classic' : this.pickMode();
     this.scenario = this.debug.scenario ?? SCENARIO_ORDER[(this.round - 1) % SCENARIO_ORDER.length];
     const sc = SCENARIOS[this.scenario].physics;
     this.friction = sc.FRICTION ?? PHYSICS.FRICTION;
-    this.ringInterval = (sc.RING_INTERVAL ?? ARENA.RING_INTERVAL) * (this.mode === 'potato' ? POTATO.RING_INTERVAL_MULT : 1);
+    const ringMult = { potato: POTATO.RING_INTERVAL_MULT, jumprope: JUMPROPE.RING_INTERVAL_MULT, balls: BALLS.RING_INTERVAL_MULT, hex: Infinity }[this.mode] ?? 1;
+    this.ringInterval = (sc.RING_INTERVAL ?? ARENA.RING_INTERVAL) * ringMult;
     this.resetArena();
-    resetRoundRules(this, this.debug.tutorial ? null : SCENARIOS[this.scenario].hazard);
+    // Obstáculos do cenário só nos modos clássicos; os minijogos já mudam a arena
+    const scenarioHazard = ['classic', 'potato', 'hill'].includes(this.mode) ? SCENARIOS[this.scenario].hazard : null;
+    resetRoundRules(this, this.debug.tutorial ? null : scenarioHazard);
+    resetMinigame(this);
+    // Eliminação: quantos passam desta fase (com poucos, é a final)
+    const alive = this.participants.length;
+    this.showFinal = this.format === 'show' && alive <= SHOW.FINAL_AT;
+    this.qualify = this.format === 'show' && !this.showFinal ? Math.max(2, Math.min(alive - 1, Math.ceil(alive * SHOW.QUALIFY_FRACTION))) : 1;
 
     const list = this.participants;
     list.forEach((p, i) => {
@@ -347,6 +387,7 @@ export class Game {
         x: Math.cos(a) * ARENA.SPAWN_RADIUS,
         z: Math.sin(a) * ARENA.SPAWN_RADIUS,
         vx: 0, vz: 0, y: 0, vy: 0, jumpBuffer: 0,
+        grab: null, grabbing: false, grabbed: false, grabCd: 0, layer: 0,
         dir: Math.atan2(-Math.cos(a), -Math.sin(a)), // virado para o centro
         st: ST.ALIVE, stT: 0,
         dashCd: 0, dashBuffer: 0,
@@ -359,7 +400,10 @@ export class Game {
     });
     if (this.debug.tutorial) this.placeTutorial();
 
-    this.send(MSG.ROUND, { round: this.round, scenario: this.scenario, mode: this.mode });
+    this.send(MSG.ROUND, {
+      round: this.round, scenario: this.scenario, mode: this.mode, format: this.format,
+      final: this.showFinal, qualify: this.format === 'show' && !this.showFinal ? this.qualify : null,
+    });
     this.setPhase(PHASE.COUNTDOWN);
     this.lastCount = null;
   }
@@ -413,6 +457,7 @@ export class Game {
           this.updatePowerups(dt);
         }
         updateHazard(this, dt);
+        updateMinigame(this, dt);
         updatePotato(this, dt);
         this.thinkBots(dt);
         this.physics(dt, true);
@@ -562,7 +607,7 @@ export class Game {
 
   // ---------- Física ----------
 
-  setInput(id, { x, z, dash, jump, seq } = {}) {
+  setInput(id, { x, z, dash, jump, grab, seq } = {}) {
     const p = this.players.get(id);
     if (!p || p.bot) return;
     p.inputX = clamp(num(x), -1, 1);
@@ -570,6 +615,7 @@ export class Game {
     p.inputSeq = Math.max(p.inputSeq ?? 0, Math.floor(num(seq)));
     if (dash) p.dashBuffer = PHYSICS.DASH_BUFFER;
     if (jump) p.jumpBuffer = PHYSICS.JUMP_BUFFER;
+    p.grabHeld = !!grab;
   }
 
   physics(dt, control) {
@@ -603,7 +649,86 @@ export class Game {
       });
     }
 
+    if (control) this.updateGrabs(dt);
     this.collide(list.filter(isStanding));
+  }
+
+  // ---------- Agarrar ----------
+  // Segurando o botão perto de alguém na frente: agarra. Soltando: arremessa para a
+  // frente. Dash de quem foi agarrado solta; o agarrão dura no máximo GRAB.MAX_TIME.
+
+  updateGrabs(dt) {
+    const list = this.participants;
+    for (const p of list) {
+      p.grabCd = Math.max(0, p.grabCd - dt);
+      if (p.grab) continue;
+      if (!p.grabHeld || p.grabCd > 0 || p.st !== ST.ALIVE || p.y > 0 || p.grabbed) continue;
+      const fx = Math.sin(p.dir);
+      const fz = Math.cos(p.dir);
+      let best = null;
+      let bestD = Infinity;
+      for (const q of list) {
+        if (q === p || !isStanding(q) || q.grabbed || q.grab || (q.y ?? 0) > 0.5 || (q.layer ?? 0) !== (p.layer ?? 0)) continue;
+        const dx = q.x - p.x;
+        const dz = q.z - p.z;
+        const d = Math.hypot(dx, dz);
+        if (d > GRAB.REACH || d < 1e-3 || (dx * fx + dz * fz) / d < GRAB.CONE) continue;
+        if (d < bestD) {
+          bestD = d;
+          best = q;
+        }
+      }
+      if (!best) {
+        p.grabCd = 0.25; // errou: tenta de novo daqui a pouco
+        continue;
+      }
+      p.grab = { id: best.id, t: 0 };
+      p.grabbing = true;
+      best.grabbed = true;
+      this.touch(best, p);
+      this.event(EVENT.GRAB, { id: p.id, target: best.id });
+    }
+    for (const p of list) {
+      if (!p.grab) continue;
+      const q = this.players.get(p.grab.id);
+      p.grab.t += dt;
+      const d = q ? Math.hypot(q.x - p.x, q.z - p.z) : Infinity;
+      const broken = !q || !isStanding(q) || q.st === ST.DASHING || !isStanding(p) || p.st === ST.DASHING || d > GRAB.BREAK_DIST;
+      if (broken || p.grab.t >= GRAB.MAX_TIME || !p.grabHeld) {
+        this.releaseGrab(p, q, !broken && p.grab.t > 0.15);
+        continue;
+      }
+      // Segura o outro na frente, puxando com uma mola firme
+      const fx = Math.sin(p.dir);
+      const fz = Math.cos(p.dir);
+      const tx = p.x + fx * GRAB.HOLD_DIST;
+      const tz = p.z + fz * GRAB.HOLD_DIST;
+      const k = Math.min(1, 12 * dt);
+      q.x += (tx - q.x) * k;
+      q.z += (tz - q.z) * k;
+      q.vx += (p.vx - q.vx) * k;
+      q.vz += (p.vz - q.vz) * k;
+    }
+  }
+
+  releaseGrab(p, q, thrown) {
+    p.grab = null;
+    p.grabbing = false;
+    p.grabCd = GRAB.COOLDOWN;
+    if (q) {
+      q.grabbed = false;
+      if (thrown) {
+        const k = GRAB.THROW * this.pushTaken(q);
+        q.vx = p.vx * 0.5 + Math.sin(p.dir) * k;
+        q.vz = p.vz * 0.5 + Math.cos(p.dir) * k;
+        if (q.st === ST.ALIVE) {
+          q.st = ST.STUNNED;
+          q.stT = GRAB.STUN;
+        }
+        this.touch(q, p);
+      }
+    }
+    this.event(EVENT.GRAB_RELEASE, { id: p.id, target: q?.id ?? null, thrown: !!thrown });
   }
 
   collide(list) {
@@ -617,6 +742,8 @@ export class Game {
         const min = this.radiusOf(a) + this.radiusOf(b);
         if (d >= min) continue;
         if (Math.abs((a.y ?? 0) - (b.y ?? 0)) > PHYSICS.JUMP_OVER) continue; // um passou por cima do outro
+        if (a.grab?.id === b.id || b.grab?.id === a.id) continue; // agarrados não se empurram
+        if ((a.layer ?? 0) !== (b.layer ?? 0)) continue; // andares diferentes (Chão que some)
         if (d < 1e-4) {
           dx = 1;
           dz = 0;
@@ -676,6 +803,7 @@ export class Game {
       const r = Math.hypot(p.x, p.z);
       if (r <= this.arena.radius) {
         if (inOpenHole(this, p)) this.fall(p, r, afterRound, 'hole');
+        else if (onMissingFloor(this, p)) this.fall(p, r, afterRound, 'floor');
         continue;
       }
       if (this.debug.nofall) {
@@ -711,6 +839,8 @@ export class Game {
       }
     }
     p.potato = false;
+    if (p.grab) this.releaseGrab(p, this.players.get(p.grab.id), false);
+    for (const q of this.participants) if (q.grab?.id === p.id) this.releaseGrab(q, p, false);
     this.event(EVENT.FALL, { id: p.id, by, x: r2(p.x), z: r2(p.z), why });
     if (by && p.id === this.kingId && !afterRound) {
       if (!this.kingslayerId) this.kingslayerId = by;
@@ -720,6 +850,15 @@ export class Game {
 
   checkRoundEnd() {
     const standing = this.participants.filter(isStanding);
+    if (this.format === 'show' && !this.showFinal) {
+      // Eliminação: a fase acaba quando sobram só os que passam
+      if (standing.length > this.qualify) return;
+      const extra = [...this.fellThisTick].sort((a, b) => a.fallR - b.fallR);
+      const qualified = [...standing, ...extra].slice(0, this.qualify);
+      if (!qualified.length) return;
+      this.endRound(qualified[0], qualified);
+      return;
+    }
     if (standing.length > 1) return;
     let winner = standing[0];
     if (!winner) {
@@ -730,11 +869,12 @@ export class Game {
     this.endRound(winner);
   }
 
-  endRound(winner) {
+  endRound(winner, qualified = null) {
     this.setPhase(PHASE.ROUND_END);
     this.arena.warning = false;
     winner.wins += 1;
     this.roundWinner = winner.id;
+    this.qualified = qualified ? qualified.map((p) => p.id) : null;
     this.event(EVENT.ROUND_END, { winner: winner.id });
 
     const list = this.participants;
@@ -750,6 +890,11 @@ export class Game {
       winner: winner.id,
       wins: this.winsTable(),
       highlight,
+      mode: this.mode,
+      format: this.format,
+      qualified: this.qualified,
+      eliminated: this.qualified ? this.participants.filter((p) => !this.qualified.includes(p.id)).map((p) => p.id) : null,
+      next: this.format === 'normal' ? null : this.pool[0] ?? null,
     });
   }
 
@@ -758,6 +903,19 @@ export class Game {
   }
 
   nextRoundOrPodium() {
+    if (this.format === 'show') {
+      if (this.showFinal || !this.qualified) return this.podium(this.players.get(this.roundWinner));
+      // Quem não passou vira espectador até o fim da partida
+      for (const p of this.participants) {
+        if (this.qualified.includes(p.id)) continue;
+        p.eliminated = true;
+        p.spectator = true;
+        p.st = ST.OUT;
+      }
+      if (this.participants.length <= 1) return this.podium(this.participants[0] ?? this.players.get(this.roundWinner));
+      this.sendLobby();
+      return this.startRound();
+    }
     const list = this.participants;
     const best = Math.max(...list.map((p) => p.wins));
     const leaders = list.filter((p) => p.wins === best);
@@ -771,7 +929,7 @@ export class Game {
 
   podium(champion) {
     this.setPhase(PHASE.PODIUM);
-    const list = this.participants;
+    const list = [...this.players.values()].filter((p) => !p.spectator || p.eliminated);
     const most = (key) => {
       const top = [...list].sort((a, b) => b[key] - a[key])[0];
       return top && top[key] > 0 ? top.id : null;
@@ -894,6 +1052,8 @@ export class Game {
         spectator: p.spectator,
         kingStreak: p.kingStreak,
         wins: p.wins,
+        hat: p.hat,
+        eliminated: p.eliminated,
       })),
     };
   }
@@ -911,6 +1071,7 @@ export class Game {
         soap: this.soapT > 0,
         rings: this.arena.rings,
         ...rulesPayload(this),
+        ...minigamePayload(this),
       },
       players: this.participants.map((p) => ({
         id: p.id,
@@ -929,6 +1090,9 @@ export class Game {
         puT: r2(Math.max(0, p.puT)),
         seq: p.bot ? undefined : p.ackSeq ?? 0,
         potato: p.potato || undefined,
+        grab: p.grab?.id,
+        grabbed: p.grabbed || undefined,
+        layer: p.layer || undefined,
       })),
       powerups: this.powerups,
     };

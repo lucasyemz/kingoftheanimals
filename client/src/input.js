@@ -11,6 +11,7 @@ const KEYS = {
   left: ['KeyA', 'ArrowLeft'],
   right: ['KeyD', 'ArrowRight'],
   jump: ['Space'],
+  grab: ['KeyE', 'KeyL'],             // segurar para agarrar; soltar arremessa
   dash: ['ShiftLeft', 'ShiftRight', 'KeyK', 'KeyJ'],
 };
 const EMOTE_KEYS = ['Digit1', 'Digit2', 'Digit3', 'Digit4'];
@@ -21,6 +22,8 @@ export function createInput({ onEmote, onDash, onJump, touchRoot }) {
   let dashQueued = false;
   let jumpQueued = false;
   let padJumpWas = false;
+  let touchGrab = false;
+  let padGrab = false;
   let stick = { x: 0, z: 0 };
   let padDashWas = false;
   let padEmoteWas = [false, false, false, false];
@@ -83,6 +86,18 @@ export function createInput({ onEmote, onDash, onJump, touchRoot }) {
       dashQueued = true;
       onDash?.();
     }, { passive: false });
+    const grabBtn = touchRoot.querySelector('.grab-btn');
+    grabBtn.textContent = STR.grab;
+    grabBtn.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      touchGrab = true;
+    }, { passive: false });
+    const releaseGrab = (e) => {
+      e.preventDefault();
+      touchGrab = false;
+    };
+    grabBtn.addEventListener('touchend', releaseGrab, { passive: false });
+    grabBtn.addEventListener('touchcancel', releaseGrab, { passive: false });
     const jumpBtn = touchRoot.querySelector('.jump-btn');
     jumpBtn.textContent = STR.jump;
     jumpBtn.addEventListener('touchstart', (e) => {
@@ -128,6 +143,7 @@ export function createInput({ onEmote, onDash, onJump, touchRoot }) {
       onJump?.();
     }
     padJumpWas = jump;
+    padGrab = !!(pad.buttons[3]?.pressed || pad.buttons[4]?.pressed);
     // direcional: emotes 1-4 (cima, direita, baixo, esquerda)
     const dpad = [12, 15, 13, 14].map((b) => !!pad.buttons[b]?.pressed);
     dpad.forEach((p, i) => {
@@ -157,7 +173,8 @@ export function createInput({ onEmote, onDash, onJump, touchRoot }) {
       const dash = dashQueued && enabled;
       const jump = jumpQueued && enabled;
       dashQueued = jumpQueued = false;
-      return { x: enabled ? x : 0, z: enabled ? z : 0, dash, jump };
+      const grab = enabled && (held('grab') || touchGrab || padGrab);
+      return { x: enabled ? x : 0, z: enabled ? z : 0, dash, jump, grab };
     },
     isTouch: () => !!touch,
   };

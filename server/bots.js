@@ -2,8 +2,10 @@
 // Prioridade (GDD): fugir da borda → pegar power-up → caçar → dar dash.
 // O tempo de reação é um atraso entre decidir e aplicar o input.
 
-import { PHYSICS, ARENA, BOTS, HILL } from '../shared/constants.js';
+import { PHYSICS, ARENA, BOTS, HILL, GRAB } from '../shared/constants.js';
 import { PHASE, PLAYER_STATE as ST } from '../shared/messages.js';
+import { timeToBar, hexIntact } from './minigames.js';
+import { HEX_TILES } from '../shared/hexgrid.js';
 
 const DEG = Math.PI / 180;
 const standing = (p) => p.st === ST.ALIVE || p.st === ST.DASHING || p.st === ST.STUNNED;
@@ -19,6 +21,8 @@ export function createBrain(difficulty, rng = Math.random) {
     targetId: null,
     positioning: false,
     rerollAt: 0,
+    grabUntil: 0,            // segurando o botão de agarrar até este instante
+    hexDir: null,            // Chão que some: direção em que está indo
   };
 }
 
@@ -31,28 +35,44 @@ export function botThink(game, p, now) {
     p.inputZ = d.z;
     if (d.dash) p.dashBuffer = PHYSICS.DASH_BUFFER;
     if (d.jump) p.jumpBuffer = PHYSICS.JUMP_BUFFER;
+    if (d.grab) brain.grabUntil = now + d.grab;
   }
+  p.grabHeld = now < brain.grabUntil;
   if (now < brain.nextThink) return;
   brain.nextThink = now + BOTS.THINK_INTERVAL;
   const cfg = BOTS.DIFFICULTY[brain.difficulty] ?? BOTS.DIFFICULTY.medium;
-  const d = decide(game, p, cfg, brain, now);
-  d.jump = !d.dash && wantsJump(game, p, cfg, brain);
+  const d = p.grab ? holdGrab(game, p) : decide(game, p, cfg, brain, now);
+  d.jump = !d.dash && !p.grab && wantsJump(game, p, cfg, brain);
+  if (!d.dash && !d.jump && !p.grab) d.grab = wantsGrab(game, p, cfg, brain);
   brain.queue.push({ at: now + cfg.reactionMs / 1000, ...d });
 }
 
-// Pular: por cima da barra de neon que vem vindo, de um dash na direção dele,
-// de quem está com a bomba, e de vez em quando só por diversão.
+// Pular: por cima das barras baixas que vêm vindo (sem pular quando vem uma alta),
+// de buraco no chão à frente, de um dash na direção dele, de quem está com a bomba,
+// e de vez em quando só por diversão.
 function wantsJump(game, p, cfg, brain) {
   if (p.y > 0 || p.st !== ST.ALIVE) return false;
   const rng = brain.rng;
   const react = cfg.reactionMs / 1000;
-  const h = game.hazard;
-  if (game.sweep && h?.type === 'sweeper' && game.sweep.t >= h.startAt) {
-    const r = Math.hypot(p.x, p.z);
-    if (r > h.hub + 0.4) {
-      const ahead = (((Math.atan2(p.z, p.x) - game.sweep.angle) % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
-      const tHit = ahead / h.speed - (PHYSICS.ANIMAL_RADIUS + h.width) / (h.speed * r);
-      if (tHit > react && tHit < react + 0.2) return rng() < cfg.jumpSkill;
+  const bars = [...(game.bars ?? []), game.sweep?.bar].filter(Boolean);
+  const r = Math.hypot(p.x, p.z);
+  for (const bar of bars) {
+    if (bar.y0 < 1 || r < (bar.hub ?? 0) + 0.3) continue;
+    const t = timeToBar(bar, p.x, p.z, game.arena.radius);
+    if (t > react - 0.05 && t < react + 0.75) return false; // barra alta vindo: fica no chão
+  }
+  for (const bar of bars) {
+    if (bar.y1 > 0.6 || r < (bar.hub ?? 0) + 0.4) continue;
+    const t = timeToBar(bar, p.x, p.z, game.arena.radius);
+    if (t > react && t < react + 0.2) return rng() < cfg.jumpSkill;
+  }
+  // Chão que some: buraco logo à frente na direção em que anda
+  if (game.hex && Math.hypot(p.vx, p.vz) > 2) {
+    const v = unit(p.vx, p.vz);
+    const look = 0.9 + react * 3;
+    const L = p.layer ?? 0;
+    if (!hexIntact(game, p.x + v.x * look, p.z + v.z * look, L) && hexIntact(game, p.x + v.x * (look + 1.6), p.z + v.z * (look + 1.6), L)) {
+      return rng() < cfg.jumpSkill;
     }
   }
   for (const q of game.participants) {
@@ -64,7 +84,31 @@ function wantsJump(game, p, cfg, brain) {
     }
     if (game.potato?.id === q.id && d < 1.8) return rng() < cfg.jumpSkill * 0.4;
   }
-  return rng() < 0.004;
+  return !game.hex && rng() < 0.004;
+}
+
+// Agarrar: alguém colado na frente, perto da borda, com o dash recarregando
+function wantsGrab(game, p, cfg, brain) {
+  if (p.grabCd > 0 || p.st !== ST.ALIVE || p.y > 0 || p.dashCd <= 0.2) return 0;
+  const fx = Math.sin(p.dir);
+  const fz = Math.cos(p.dir);
+  for (const q of game.participants) {
+    if (q === p || !standing(q)) continue;
+    const dx = q.x - p.x;
+    const dz = q.z - p.z;
+    const d = Math.hypot(dx, dz);
+    if (d > GRAB.REACH * 0.95 || (dx * fx + dz * fz) / (d || 1) < 0.5) continue;
+    const edgeness = Math.hypot(q.x, q.z) / Math.max(game.arena.radius, 1);
+    if (edgeness > 0.55 && brain.rng() < cfg.grabChance) return 0.45 + brain.rng() * 0.5;
+  }
+  return 0;
+}
+
+// Segurando alguém: anda para a borda mais perto dele, para o arremesso sair para fora
+function holdGrab(game, p) {
+  const q = game.players.get(p.grab.id);
+  if (!q) return { x: 0, z: 0, dash: false };
+  return { ...unit(q.x, q.z), dash: false };
 }
 
 function unit(x, z) {
@@ -119,7 +163,57 @@ function decide(game, p, cfg, brain, now) {
     if (d < h.r + cfg.edgeSense * 0.6) return { ...unit(p.x - h.x, p.z - h.z), dash: false };
   }
 
-  // 1c. Modos
+  // 1c. Chuva de bolas: sai da frente de bola vindo
+  for (const b of game.balls ?? []) {
+    const rx = p.x - b.x;
+    const rz = p.z - b.z;
+    const sp = Math.hypot(b.vx, b.vz);
+    if (sp < 0.1) continue;
+    const vx = b.vx / sp;
+    const vz = b.vz / sp;
+    const ahead = rx * vx + rz * vz;          // à frente da bola (metros)
+    const lateral = rx * -vz + rz * vx;      // de lado (com sinal)
+    if (ahead < -1 || ahead > sp * 1.6) continue;
+    if (Math.abs(lateral) > b.r + PHYSICS.ANIMAL_RADIUS + 0.8) continue;
+    let side = lateral >= 0 ? { x: -vz, z: vx } : { x: vz, z: -vx };
+    // não foge para fora da arena
+    if ((p.x + side.x * 2) ** 2 + (p.z + side.z * 2) ** 2 > (edge - 1) ** 2) side = { x: -side.x, z: -side.z };
+    return { ...side, dash: dashReady && ahead < sp * 0.5 && rng() < cfg.dodgeChance + 0.2 };
+  }
+
+  // 1d. Chão que some: nunca para (parado, a peça cai). Olha em 12 direções e vai
+  //     para onde há mais chão inteiro seguido, longe da borda e dos outros.
+  if (game.hex) {
+    let best = null;
+    let bestScore = -Infinity;
+    const prev = brain.hexDir;
+    for (let k = 0; k < 12; k++) {
+      const a = (k / 12) * Math.PI * 2;
+      const dx = Math.cos(a);
+      const dz = Math.sin(a);
+      let run = 0;
+      for (let step = 0.8; step <= 4.4; step += 0.4) { // começa depois da peça em que está
+        if (!hexIntact(game, p.x + dx * step, p.z + dz * step, p.layer ?? 0)) break;
+        run = step;
+      }
+      const ex = p.x + dx * 2;
+      const ez = p.z + dz * 2;
+      let crowd = 0;
+      for (const q of others) if ((q.layer ?? 0) === (p.layer ?? 0)) crowd += Math.max(0, 2.5 - Math.hypot(q.x - ex, q.z - ez));
+      const keep = prev ? (dx * prev.x + dz * prev.z) * 0.6 : 0; // não fica mudando de ideia
+      const score = run * 2 - Math.max(0, Math.hypot(ex, ez) - (edge - cfg.edgeSense - 1)) * 2 - crowd + keep + rng() * 0.2;
+      if (score > bestScore) {
+        bestScore = score;
+        best = { x: dx, z: dz };
+      }
+    }
+    brain.hexDir = best;
+    // devagar gasta menos chão (os melhores bots andam mais devagar)
+    const pace = { easy: 0.75, medium: 0.45, hard: 0.35 }[brain.difficulty] ?? 0.6;
+    if (best) return { x: best.x * pace, z: best.z * pace, dash: false };
+  }
+
+  // 1e. Modos
   if (game.mode === 'potato' && game.potato) {
     const holder = game.players.get(game.potato.id);
     if (holder === p) {

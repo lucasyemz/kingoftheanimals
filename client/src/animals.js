@@ -7,8 +7,9 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import gsap from 'gsap';
-import { PHYSICS, POWERUPS, FX } from '../../shared/constants.js';
+import { PHYSICS, POWERUPS, FX, HEX } from '../../shared/constants.js';
 import { PLAYER_STATE as ST } from '../../shared/messages.js';
+import { hatMesh } from './hats.js';
 
 const templates = {}; // tipo → { scene, animations, scale, yOffset, flip, head }
 const VISUAL_HEIGHT = 1.45; // altura do bicho na tela, em metros
@@ -198,6 +199,10 @@ export class Animal {
       this.root.add(circle);
     }
 
+    // Chapéu do guarda-roupa (some quando a coroa aparece)
+    this.hat = null;
+    this.hatId = 'none';
+
     // Coroa do King
     this.crown = crownMesh(crownModel);
     this.crown.position.y = this.headY;
@@ -245,9 +250,21 @@ export class Animal {
     }
   }
 
+  setHat(id) {
+    if (id === this.hatId) return;
+    this.hatId = id;
+    this.hat?.removeFromParent();
+    this.hat = hatMesh(id);
+    if (!this.hat) return;
+    this.hat.position.y = this.headY - 0.02;
+    this.hat.visible = !this.crown.visible;
+    this.body.add(this.hat);
+  }
+
   setCrown(on) {
     if (on === this.crown.visible) return;
     this.crown.visible = on;
+    if (this.hat) this.hat.visible = !on;
     if (on) gsap.fromTo(this.crown.position, { y: this.headY + 2.5 }, { y: this.headY, duration: 0.8, ease: 'bounce.out' });
   }
 
@@ -265,7 +282,8 @@ export class Animal {
 
   // Estado que vem do servidor (já interpolado)
   apply(p, dt) {
-    this.root.position.set(p.x, 0, p.z);
+    // Chão que some: cada andar fica HEX.LAYER_GAP metros abaixo do anterior
+    this.root.position.set(p.x, -(p.layer ?? 0) * HEX.LAYER_GAP, p.z);
     this.root.rotation.y = p.dir;
     // Pulo: o bicho sobe; a sombra (disco) fica no chão e diminui com a altura
     const y = p.st === ST.FALLING || p.st === ST.OUT ? 0 : Math.max(0, p.y ?? 0);
@@ -336,7 +354,7 @@ export class Animal {
   land() {
     gsap.killTweensOf(this.body.scale);
     gsap.fromTo(this.body.scale, { x: 1.18, y: 0.8, z: 1.18 }, { x: 1, y: 1, z: 1, duration: 0.35, ease: 'elastic.out(1.1, 0.45)' });
-    this.onLand?.(this.root.position.x, this.root.position.z);
+    this.onLand?.(this.root.position.x, this.root.position.z, this.root.position.y);
   }
 
   hop() {

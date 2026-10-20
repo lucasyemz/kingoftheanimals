@@ -115,14 +115,83 @@ export const MATCH = {
   ROUND_MAX_TIME: 90,         // GDD: depois disso, morte súbita
   ROUND_END_SLOWMO: 0.5,      // GDD: câmera lenta de 0,5 s no fim da rodada
   ROUND_END_SLOWMO_SCALE: 0.3, // definido: velocidade da simulação durante a câmera lenta
-  SCOREBOARD_TIME: 5,         // GDD: placar entre rodadas
+  SCOREBOARD_TIME: 7.5,       // placar entre rodadas (GDD: 5 s) + ~4 s de replay do último empurrão
   // definido: se dois caem no mesmo tick, vence quem estava mais perto do centro
   SAME_TICK_TIEBREAK: 'closestToCenter',
 };
 
 // ---------- Modos de jogo (escolhidos pelo anfitrião no lobby) ----------
 
-export const MODES = ['classic', 'potato', 'hill'];
+// Minijogos (um por rodada) e formatos de partida. 'party' sorteia um minijogo por
+// rodada; 'show' também, e quem cai é eliminado até sobrar o campeão (Fall Guys).
+export const MINIGAMES = ['classic', 'potato', 'hill', 'jumprope', 'hex', 'balls'];
+export const FORMATS = ['party', 'show'];
+export const MODES = [...MINIGAMES, ...FORMATS];
+export const SHOW_POOL = ['classic', 'potato', 'jumprope', 'hex', 'balls']; // sem colina: ela não elimina ninguém
+
+// Eliminação em fases: em cada rodada passam ~60 %; com 3 ou menos é a final.
+export const SHOW = {
+  QUALIFY_FRACTION: 0.6,
+  FINAL_AT: 3,
+};
+
+// Pula-corda: duas barras atravessam a arena girando. A baixa se pula; a alta pega
+// quem está no ar. As duas aceleram com o tempo.
+export const JUMPROPE = {
+  START_AT: 2,
+  LOW: { speed: 0.75, accel: 0.022, max: 2.1, width: 0.3, y0: 0, y1: 0.42 },
+  HIGH: { speed: -0.55, accel: -0.016, max: 1.6, width: 0.3, y0: 1.35, y1: 1.75 },
+  PUSH: 7,
+  HUB: 0.6,
+  RING_INTERVAL_MULT: 1.6,
+};
+
+// Chão que some: a arena vira 3 andares de hexágonos; o que alguém pisa trinca e
+// cai. Quem cai por um buraco aterrissa no andar de baixo; do último, sai da rodada.
+export const HEX = {
+  LAYERS: 3,
+  LAYER_GAP: 4,               // metros entre andares
+  SIZE: 0.75,                 // centro ao canto do hexágono, em metros (menor = o chão dura mais)
+  GAP: 0.06,                  // fresta visual entre peças
+  CRUMBLE: 1.0,               // segundos entre pisar e a peça cair
+  GRACE: 1.2,                 // depois do GO, ninguém derruba peça por este tempo
+};
+
+// Chuva de bolas: bolas gigantes atravessam a arena rolando.
+export const BALLS = {
+  FIRST_AT: 1.5,
+  INTERVAL: 2.2,
+  INTERVAL_MIN: 0.7,
+  INTERVAL_STEP: 0.04,        // fica mais rápido a cada bola
+  RADIUS: [1.0, 1.5],
+  SPEED: [5, 8.5],
+  KNOCK: 4,                   // tranco extra além da velocidade da bola
+  STUN: 0.3,
+  RING_INTERVAL_MULT: 1.3,
+};
+
+// Agarrar: segurar outro bicho na frente e soltar para arremessar.
+export const GRAB = {
+  REACH: 1.55,                // distância entre centros para pegar
+  CONE: 0.25,                 // cos do ângulo na frente
+  HOLD_DIST: 1.15,
+  MAX_TIME: 1.6,
+  THROW: 7.5,
+  STUN: 0.25,
+  COOLDOWN: 1.4,
+  GRABBER_SPEED: 0.7,
+  GRABBED_SPEED: 0.3,
+  BREAK_DIST: 2.4,
+};
+
+// Chapéus (comprados com moedas no menu; preço em moedas)
+export const HATS = {
+  none: 0, party: 30, cap: 50, flower: 70, tophat: 100, chef: 120, cowboy: 140, viking: 170, halo: 220,
+};
+
+export const COINS = {
+  ROUND: 2, ROUND_WIN: 10, KO: 3, MATCH: 5, MATCH_WIN: 25, QUALIFY: 6,
+};
 
 // Batata quente: alguém segura a bomba; encostar passa adiante. Quem segura quando
 // o pavio acaba explode (cai). Depois a bomba vai para outro, com pavio menor.
@@ -153,6 +222,7 @@ export const QUICK = {
   START_NOW_HUMANS: 4,        // com 4 pessoas começa na hora
   MIN_TOTAL: 6,               // bots completam até 6 bichos
   DIFFICULTY: 'medium',
+  MODE: 'party',              // sala pública joga a Festa (um minijogo por rodada)
   REMATCH_AFTER: 12,          // pódio → lobby sozinho depois de 12 s
 };
 
@@ -198,9 +268,9 @@ export const BOTS = {
   NAME_ADJECTIVE_COUNT: 12,   // strings.botAdjectives precisa ter 12 itens ("Brakeless", "Turbo"...)
   DIFFICULTY: {
     //               reação  mira±  borda  ignora PU  posiciona  desvia  pula na hora certa (barra, dash, bomba)
-    easy:   { reactionMs: 600, aimErrorDeg: 35, edgeSense: 1.5, ignorePowerup: 0.6, positionChance: 0,   dodgeChance: 0,   jumpSkill: 0.25 },
-    medium: { reactionMs: 300, aimErrorDeg: 15, edgeSense: 3,   ignorePowerup: 0.3, positionChance: 0.5, dodgeChance: 0.3, jumpSkill: 0.6 },
-    hard:   { reactionMs: 120, aimErrorDeg: 5,  edgeSense: 3.5, ignorePowerup: 0,   positionChance: 1,   dodgeChance: 0.7, jumpSkill: 0.9 },
+    easy:   { reactionMs: 600, aimErrorDeg: 35, edgeSense: 1.5, ignorePowerup: 0.6, positionChance: 0,   dodgeChance: 0,   jumpSkill: 0.25, grabChance: 0.1 },
+    medium: { reactionMs: 300, aimErrorDeg: 15, edgeSense: 3,   ignorePowerup: 0.3, positionChance: 0.5, dodgeChance: 0.3, jumpSkill: 0.6,  grabChance: 0.25 },
+    hard:   { reactionMs: 120, aimErrorDeg: 5,  edgeSense: 3.5, ignorePowerup: 0,   positionChance: 1,   dodgeChance: 0.7, jumpSkill: 0.9,  grabChance: 0.4 },
   },
 };
 
