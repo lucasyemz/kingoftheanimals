@@ -5,7 +5,7 @@
 import {
   NET, ROOM, PHYSICS, ARENA, MATCH, POWERUPS, BOTS, EMOTES,
   SCENARIOS, SCENARIO_ORDER, ANIMALS, PLAYER_COLORS, MODES, POTATO, QUICK, RECONNECT,
-  MINIGAMES, FORMATS, SHOW_POOL, SHOW, JUMPROPE, BALLS, HATS, HILL, HEALTH,
+  MINIGAMES, FORMATS, SHOW_POOL, SHOW, JUMPROPE, BALLS, HATS, HILL, HEALTH, CHARGE,
 } from '../shared/constants.js';
 import { MSG, PHASE, PLAYER_STATE as ST, EVENT, JOIN_ERROR } from '../shared/messages.js';
 import { createBrain, botThink } from './bots.js';
@@ -42,8 +42,20 @@ export function movePlayer(p, dt, { control, friction, onDash, onJump }) {
   p.jumpBuffer = Math.max(0, (p.jumpBuffer ?? 0) - dt);
   const airborne = p.y > 0;
   if ((p.st === ST.DASHING || p.st === ST.STUNNED) && p.stT <= 0) p.st = ST.ALIVE;
+  if (p.st === ST.ALIVE) p.dashCharge = 0;
   p.dashCd = Math.max(0, p.dashCd - dt);
   p.dashBuffer = Math.max(0, p.dashBuffer - dt);
+  // Dash carregado: enche enquanto segura (com o dash pronto); ao soltar, dispara
+  const held = !!p.charging && control;
+  let release = -1;
+  if (p.st !== ST.ALIVE || !control) p.chargeT = 0;
+  else if (held && p.dashCd <= 0) p.chargeT = Math.min(CHARGE.TIME, (p.chargeT ?? 0) + dt);
+  if (!held && p.chargeWas) {
+    if ((p.chargeT ?? 0) > 0) release = Math.max(0, ((p.chargeT ?? 0) - CHARGE.TAP) / (CHARGE.TIME - CHARGE.TAP));
+    else p.dashBuffer = PHYSICS.DASH_BUFFER; // soltou durante a recarga: vale como toque
+    p.chargeT = 0;
+  }
+  p.chargeWas = held;
   if (p.pu) {
     p.puT -= dt;
     if (p.puT <= 0) p.pu = null;
@@ -62,7 +74,8 @@ export function movePlayer(p, dt, { control, friction, onDash, onJump }) {
       iz /= len;
     }
     if (ix || iz) {
-      const mult = (coffee ? coffee.speedMult : 1) * (p.potato ? POTATO.HOLDER_SPEED : 1) * (airborne ? PHYSICS.AIR_CONTROL : 1);
+      const charging = (p.chargeT ?? 0) > CHARGE.TAP ? CHARGE.MOVE_MULT : 1;
+      const mult = (coffee ? coffee.speedMult : 1) * (p.potato ? POTATO.HOLDER_SPEED : 1) * (airborne ? PHYSICS.AIR_CONTROL : 1) * charging;
       const maxSpeed = PHYSICS.MAX_SPEED * mult;
       const before = Math.hypot(p.vx, p.vz);
       p.vx += ix * PHYSICS.ACCEL * mult * dt;
@@ -76,19 +89,22 @@ export function movePlayer(p, dt, { control, friction, onDash, onJump }) {
       }
       p.dir = Math.atan2(ix, iz);
     }
-    if (p.dashBuffer > 0 && p.dashCd <= 0) {
+    if ((p.dashBuffer > 0 || release >= 0) && p.dashCd <= 0) {
+      const c = Math.max(0, release); // 0 = dash normal, 1 = carga cheia
       const dx = ix || iz ? ix : Math.sin(p.dir);
       const dz = ix || iz ? iz : Math.cos(p.dir);
       const dl = Math.hypot(dx, dz) || 1;
-      p.vx = (dx / dl) * PHYSICS.DASH_SPEED;
-      p.vz = (dz / dl) * PHYSICS.DASH_SPEED;
+      const speed = PHYSICS.DASH_SPEED * (1 + CHARGE.SPEED_BONUS * c);
+      p.vx = (dx / dl) * speed;
+      p.vz = (dz / dl) * speed;
       p.dir = Math.atan2(dx, dz);
       p.st = ST.DASHING;
       p.stT = PHYSICS.DASH_DURATION;
-      p.dashCdMax = PHYSICS.DASH_COOLDOWN * (coffee ? coffee.dashCooldownMult : 1);
+      p.dashCharge = c;
+      p.dashCdMax = PHYSICS.DASH_COOLDOWN * (coffee ? coffee.dashCooldownMult : 1) * (1 + CHARGE.COOLDOWN_BONUS * c);
       p.dashCd = p.dashCdMax;
       p.dashBuffer = 0;
-      onDash?.(dx / dl, dz / dl);
+      onDash?.(dx / dl, dz / dl, c);
     }
     if (p.jumpBuffer > 0 && !airborne && p.st === ST.ALIVE) {
       p.vy = PHYSICS.JUMP_SPEED;
@@ -391,6 +407,7 @@ export class Game {
         z: Math.sin(a) * ARENA.SPAWN_RADIUS,
         vx: 0, vz: 0, y: 0, vy: 0, jumpBuffer: 0,
         layer: 0, hp: HEALTH.MAX, hits: [], dazedUntil: -Infinity,
+        chargeT: 0, charging: false, chargeWas: false, dashCharge: 0,
         dir: Math.atan2(-Math.cos(a), -Math.sin(a)), // virado para o centro
         st: ST.ALIVE, stT: 0,
         dashCd: 0, dashBuffer: 0,
@@ -636,7 +653,7 @@ export class Game {
 
   // ---------- Física ----------
 
-  setInput(id, { x, z, dash, jump, seq } = {}) {
+  setInput(id, { x, z, dash, jump, charge, seq } = {}) {
     const p = this.players.get(id);
     if (!p || p.bot) return;
     p.inputX = clamp(num(x), -1, 1);
@@ -644,6 +661,7 @@ export class Game {
     p.inputSeq = Math.max(p.inputSeq ?? 0, Math.floor(num(seq)));
     if (dash) p.dashBuffer = PHYSICS.DASH_BUFFER;
     if (jump) p.jumpBuffer = PHYSICS.JUMP_BUFFER;
+    p.charging = !!charge;
   }
 
   physics(dt, control) {
@@ -669,9 +687,9 @@ export class Game {
       movePlayer(p, dt, {
         control,
         friction,
-        onDash: (dx, dz) => {
+        onDash: (dx, dz, c) => {
           p.dashCount += 1;
-          this.event(EVENT.DASH, { id: p.id, dx: r2(dx), dz: r2(dz) });
+          this.event(EVENT.DASH, { id: p.id, dx: r2(dx), dz: r2(dz), c: c ? r2(c) : undefined });
         },
         onJump: () => this.event(EVENT.JUMP, { id: p.id }),
       });
@@ -717,8 +735,8 @@ export class Game {
         const bDash = b.st === ST.DASHING;
         const J = (aDash || bDash ? PHYSICS.DASH_PUSH_FACTOR : PHYSICS.PUSH_FACTOR) * vrel;
         // o empurrão de dash cresce com a vida perdida de quem leva
-        const ka = bDash ? this.knockback(a) : 1;
-        const kb = aDash ? this.knockback(b) : 1;
+        const ka = bDash ? this.knockback(a) * (1 + CHARGE.KNOCK_BONUS * (b.dashCharge ?? 0)) : 1;
+        const kb = aDash ? this.knockback(b) * (1 + CHARGE.KNOCK_BONUS * (a.dashCharge ?? 0)) : 1;
         a.vx -= nx * J * wa * ka;
         a.vz -= nz * J * wa * ka;
         b.vx += nx * J * wb * kb;
@@ -733,16 +751,25 @@ export class Game {
   }
 
   dashHit(attacker, target) {
+    const charge = attacker.dashCharge ?? 0;
+    const full = charge >= 1;
     attacker.st = ST.ALIVE;
     attacker.stT = 0;
+    attacker.dashCharge = 0;
     // Dois bichos diferentes acertam o mesmo alvo em pouco tempo: ele fica tonto
     const now = this.simTime;
     target.hits = (target.hits ?? []).filter((h) => now - h.t < HEALTH.DOUBLE_HIT_WINDOW && h.by !== attacker.id);
     const dazed = target.hits.length > 0 && now - (target.dazedUntil ?? -Infinity) > HEALTH.DAZE_IMMUNITY;
     target.hits.push({ by: attacker.id, t: now });
-    this.damage(target, HEALTH.DASH_DAMAGE + (dazed ? HEALTH.DAZE_DAMAGE : 0));
+    this.damage(target, HEALTH.DASH_DAMAGE * (1 + CHARGE.DAMAGE_BONUS * charge) + (dazed ? HEALTH.DAZE_DAMAGE : 0));
     target.st = ST.STUNNED;
-    if (dazed) {
+    target.chargeT = 0;
+    if (full) {
+      // Carga cheia: tonto garantido (não conta a imunidade do golpe duplo)
+      target.stT = Math.max(target.stT ?? 0, CHARGE.STUN);
+      target.dazedUntil = now + CHARGE.STUN;
+      target.hits = [];
+    } else if (dazed) {
       target.stT = HEALTH.DAZE_DURATION;
       target.dazedUntil = now + HEALTH.DAZE_DURATION;
       target.hits = [];
@@ -754,7 +781,8 @@ export class Game {
       target: target.id,
       x: r2((attacker.x + target.x) / 2),
       z: r2((attacker.z + target.z) / 2),
-      dazed: dazed || undefined,
+      dazed: dazed || full || undefined,
+      charge: charge ? r2(charge) : undefined,
     });
   }
 
@@ -980,6 +1008,7 @@ export class Game {
         ...spot, vx: 0, vz: 0, y: 0, vy: 0, st: ST.ALIVE, stT: 0, layer: 0,
         dir: Math.atan2(-spot.x, -spot.z), lastToucher: null, respawnAt: null,
         potato: false, hp: HEALTH.MAX, hits: [], dazedUntil: -Infinity,
+        chargeT: 0, charging: false, chargeWas: false, dashCharge: 0,
       });
       this.event(EVENT.RESPAWN, { id: p.id, x: r2(p.x), z: r2(p.z) });
     }
@@ -1115,6 +1144,7 @@ export class Game {
         seq: p.bot ? undefined : p.ackSeq ?? 0,
         potato: p.potato || undefined,
         hp: Math.round(p.hp),
+        charge: p.chargeT > 0 ? r2(p.chargeT / CHARGE.TIME) : undefined, // fração de CHARGE.TIME
         layer: p.layer || undefined,
       })),
       powerups: this.powerups,

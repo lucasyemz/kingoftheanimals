@@ -628,6 +628,38 @@ input:focus {
   to { border-color: #ff2a2a; }
 }
 
+.animal-label .charge-bar {
+  width: 76px;
+  height: 8px;
+  margin: 3px auto 0;
+  border-radius: 4px;
+  background: rgb(0 0 0 / 0.55);
+  border: 2px solid var(--ink);
+  overflow: hidden;
+}
+
+.animal-label .charge-bar[hidden] {
+  display: none;
+}
+
+.animal-label .charge-bar i {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #ffd23f, #ff7a2a);
+}
+
+.animal-label .charge-bar.full {
+  animation: charge-full 0.18s linear infinite alternate;
+}
+
+.animal-label .charge-bar.full i {
+  background: #fff;
+}
+
+@keyframes charge-full {
+  to { border-color: #ffd23f; box-shadow: 0 0 10px #ffd23f; }
+}
+
 .animal-label .badge {
   font-size: 10px;
 }

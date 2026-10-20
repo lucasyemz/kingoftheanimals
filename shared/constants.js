@@ -171,6 +171,19 @@ export const BALLS = {
   RING_INTERVAL_MULT: 1.3,
 };
 
+// Dash carregado: segurar o botão enche a barra; soltar dá o dash. Carga parcial joga
+// o alvo mais longe; carga cheia ainda deixa ele tonto. Um toque rápido é o dash normal.
+export const CHARGE = {
+  TIME: 1.0,                  // segundos para encher a barra
+  TAP: 0.12,                  // segurou menos que isso: dash normal (carga 0)
+  MOVE_MULT: 0.45,            // carregando, anda mais devagar
+  SPEED_BONUS: 0.15,          // cheio: dash 15 % mais rápido
+  KNOCK_BONUS: 0.75,          // cheio: empurrão 1,75 × (parcial: proporcional); com a velocidade, ~2 ×
+  DAMAGE_BONUS: 1.0,          // cheio: dano 2 ×
+  COOLDOWN_BONUS: 0.6,        // cheio: recarga 60 % maior
+  STUN: 1.3,                  // cheio: tonto por 1,3 s
+};
+
 // Vida (estilo Brawlhalla): cada golpe tira vida e, quanto menos vida, mais longe o
 // próximo empurrão joga. Ninguém morre por vida: só caindo. Volta cheia a cada rodada.
 export const HEALTH = {
@@ -287,10 +300,10 @@ export const BOTS = {
   DODGE_ANGLE_DEG: 25,        // definido: e apontado para ele
   NAME_ADJECTIVE_COUNT: 12,   // strings.botAdjectives precisa ter 12 itens ("Brakeless", "Turbo"...)
   DIFFICULTY: {
-    //               reação  mira±  borda  ignora PU  posiciona  desvia  pula na hora certa (barra, dash, bomba)
-    easy:   { reactionMs: 600, aimErrorDeg: 35, edgeSense: 1.5, ignorePowerup: 0.6, positionChance: 0,   dodgeChance: 0,   jumpSkill: 0.25 },
-    medium: { reactionMs: 300, aimErrorDeg: 15, edgeSense: 3,   ignorePowerup: 0.3, positionChance: 0.5, dodgeChance: 0.3, jumpSkill: 0.6 },
-    hard:   { reactionMs: 120, aimErrorDeg: 5,  edgeSense: 3.5, ignorePowerup: 0,   positionChance: 1,   dodgeChance: 0.7, jumpSkill: 0.9 },
+    //               reação  mira±  borda  ignora PU  posiciona  desvia  pula na hora certa (barra, dash, bomba)  carrega o dash
+    easy:   { reactionMs: 600, aimErrorDeg: 35, edgeSense: 1.5, ignorePowerup: 0.6, positionChance: 0,   dodgeChance: 0,   jumpSkill: 0.25, chargeChance: 0 },
+    medium: { reactionMs: 300, aimErrorDeg: 15, edgeSense: 3,   ignorePowerup: 0.3, positionChance: 0.5, dodgeChance: 0.3, jumpSkill: 0.6,  chargeChance: 0.2 },
+    hard:   { reactionMs: 120, aimErrorDeg: 5,  edgeSense: 3.5, ignorePowerup: 0,   positionChance: 1,   dodgeChance: 0.7, jumpSkill: 0.9,  chargeChance: 0.3 },
   },
 };
 

@@ -7,7 +7,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import gsap from 'gsap';
-import { PHYSICS, POWERUPS, FX, HEX, HEALTH } from '../../shared/constants.js';
+import { PHYSICS, POWERUPS, FX, HEX, HEALTH, CHARGE } from '../../shared/constants.js';
 import { PLAYER_STATE as ST } from '../../shared/messages.js';
 import { hatMesh } from './hats.js';
 
@@ -225,10 +225,14 @@ export class Animal {
     // Etiquetas HTML sobre a cabeça: nome, ícone do power-up, balão do emote
     this.labelEl = makeLabel('animal-label');
     // nome em cima, barra de vida embaixo (verde → amarelo → vermelho)
-    this.labelEl.innerHTML = '<div class="label-main"></div><div class="hp-bar" hidden><i></i></div>';
-    this.labelMain = this.labelEl.firstChild;
-    this.hpBar = this.labelEl.lastChild;
-    this.hpFill = this.hpBar.firstChild;
+    this.labelEl.innerHTML = '<div class="label-main"></div><div class="hp-bar" hidden><i></i></div><div class="charge-bar" hidden><i></i></div>';
+    const [main, hpBar, chargeBar] = this.labelEl.children;
+    this.labelMain = main;
+    this.hpBar = hpBar;
+    this.hpFill = hpBar.firstChild;
+    this.chargeBar = chargeBar;
+    this.chargeFill = chargeBar.firstChild;
+    this.chargeFull = false;
     this.hp = null;
     this.label = new CSS2DObject(this.labelEl);
     this.label.position.y = this.headY + 0.55;
@@ -317,6 +321,7 @@ export class Animal {
     }
     if (this.stars.visible) this.stars.rotation.y += dt * (this.dazed ? 11 : 8);
     this.setHealth(p.hp);
+    this.setCharge(p.charge);
     // Tonto (dois golpes seguidos): estrelas maiores enquanto dura
     const dazed = p.st === ST.STUNNED && (p.stT ?? 0) > PHYSICS.STUN_DURATION + 0.05;
     if (dazed !== this.dazed) {
@@ -425,6 +430,30 @@ export class Animal {
 
   hideIcon() {
     this.icon.visible = false;
+  }
+
+  // Barra do dash carregado (só aparece depois do toque rápido); cheia, pisca e o bicho treme
+  setCharge(charge) {
+    const t = (charge ?? 0) * CHARGE.TIME;
+    const on = t > CHARGE.TAP;
+    this.chargeBar.hidden = !on;
+    const f = on ? Math.min(1, (t - CHARGE.TAP) / (CHARGE.TIME - CHARGE.TAP)) : 0;
+    if (on) this.chargeFill.style.width = `${f * 100}%`;
+    const full = f >= 1;
+    if (full !== this.chargeFull) {
+      this.chargeFull = full;
+      this.chargeBar.classList.toggle('full', full);
+      if (full) this.onChargeFull?.();
+    }
+    // agachado enquanto carrega; cheio, treme (fora da carga não mexe: squash e stretch usam o mesmo corpo)
+    if (on) {
+      this.body.scale.y = 1 - 0.12 * f;
+      this.body.position.x = full ? (Math.random() - 0.5) * 0.06 : 0;
+    } else if (this.charging) {
+      this.body.scale.y = 1;
+      this.body.position.x = 0;
+    }
+    this.charging = on;
   }
 
   setHealth(hp) {

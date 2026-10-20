@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
 import gsap from 'gsap';
 import { io } from 'socket.io-client';
-import { NET, ANIMALS, MATCH, SCENARIOS, EMOTES, POWERUPS, PLAYER_COLORS, PHYSICS, HILL, HEX, COINS } from '../../shared/constants.js';
+import { NET, ANIMALS, MATCH, SCENARIOS, EMOTES, POWERUPS, PLAYER_COLORS, PHYSICS, HILL, HEX, COINS, CHARGE } from '../../shared/constants.js';
 import { MSG, PHASE, PLAYER_STATE as ST, EVENT } from '../../shared/messages.js';
 import { Game, movePlayer } from '../../server/game.js';
 import { STR } from './strings.js';
@@ -451,6 +451,7 @@ function syncRoster() {
     if (!a) {
       a = createAnimal(p.animal, colorOf(p), { crownModel: crownModel?.clone(), debug: SHOW_DEBUG });
       a.onLand = (x, z, y) => fx.landDust(x, z, y);
+      a.onChargeFull = () => p.id === myId && fx.chargeFull();
       animals.set(p.id, a);
       world.scene.add(a.root);
     }
@@ -693,6 +694,7 @@ function stepPredicted(inp) {
   pm.inputZ = inp.z;
   if (inp.dash) pm.dashBuffer = PHYSICS.DASH_BUFFER;
   if (inp.jump) pm.jumpBuffer = PHYSICS.JUMP_BUFFER;
+  pm.charging = !!inp.charge;
   // Rajada de vento: o servidor empurra todo mundo; a previsão faz igual
   const w = latest?.arena.wind;
   if (w?.phase === 'blow' && w.a && PREDICTABLE.has(pm.st)) {
@@ -724,6 +726,7 @@ function reconcile(s) {
     dashCd: (me.dashCd ?? 0) * (me.dashCdMax || PHYSICS.DASH_COOLDOWN),
     dashBuffer: 0, pu: me.pu, puT: me.puT ?? 0, inputX: 0, inputZ: 0, potato: !!me.potato,
     y: me.y ?? 0, vy: me.vy ?? 0, jumpBuffer: 0,
+    chargeT: (me.charge ?? 0) * CHARGE.TIME, chargeWas: me.charge != null, charging: false,
   };
   for (const h of predict.history) stepPredicted(h);
   predict.prev = { x: predict.me.x, z: predict.me.z, y: predict.me.y };
@@ -750,6 +753,7 @@ function selfPose(p, now, dt) {
       y: (prev.y ?? pm.y) + (pm.y - (prev.y ?? pm.y)) * k,
       vx: pm.vx, vz: pm.vz, dir: pm.dir, st: pm.st,
       dashCd: pm.dashCdMax ? pm.dashCd / pm.dashCdMax : 0,
+      charge: pm.chargeT > 0 ? pm.chargeT / CHARGE.TIME : undefined,
     };
     source = 'predicted';
   }

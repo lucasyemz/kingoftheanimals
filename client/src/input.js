@@ -1,4 +1,5 @@
-// Teclado, gamepad e joystick virtual no celular. Tudo vira { x, z, dash }.
+// Teclado, gamepad e joystick virtual no celular. Tudo vira { x, z, jump, charge }.
+// Dash: segurar carrega (charge = true enquanto segura); soltar dispara. Toque rápido = dash normal.
 // x/z no plano do chão: -z é "para cima" na tela.
 
 import nipplejs from 'nipplejs';
@@ -18,8 +19,11 @@ const PAD_DEAD_ZONE = 0.2;
 
 export function createInput({ onEmote, onDash, onJump, touchRoot }) {
   const down = new Set();
-  let dashQueued = false;
   let jumpQueued = false;
+  let keyCharge = false;    // segurando a tecla de dash
+  let touchCharge = false;
+  let padCharge = false;
+  let chargeLatch = false;  // apertou desde a última leitura (um toque rápido não se perde)
   let padJumpWas = false;
   let stick = { x: 0, z: 0 };
   let padDashWas = false;
@@ -33,8 +37,8 @@ export function createInput({ onEmote, onDash, onJump, touchRoot }) {
     if (KEYS.dash.includes(e.code)) {
       e.preventDefault();
       if (!e.repeat && enabled) {
-        dashQueued = true;
-        onDash?.();
+        keyCharge = true;
+        chargeLatch = true;
       }
     }
     if (KEYS.jump.includes(e.code)) {
@@ -49,8 +53,17 @@ export function createInput({ onEmote, onDash, onJump, touchRoot }) {
     if (e.code.startsWith('Arrow')) e.preventDefault();
     down.add(e.code);
   });
-  addEventListener('keyup', (e) => down.delete(e.code));
-  addEventListener('blur', () => down.clear());
+  addEventListener('keyup', (e) => {
+    down.delete(e.code);
+    if (KEYS.dash.includes(e.code) && keyCharge && !KEYS.dash.some((k) => down.has(k))) {
+      keyCharge = false;
+      if (enabled) onDash?.();
+    }
+  });
+  addEventListener('blur', () => {
+    down.clear();
+    keyCharge = touchCharge = false;
+  });
 
   const held = (action) => KEYS[action].some((k) => down.has(k));
 
@@ -80,9 +93,17 @@ export function createInput({ onEmote, onDash, onJump, touchRoot }) {
     dashBtn.addEventListener('touchstart', (e) => {
       e.preventDefault();
       if (!enabled) return;
-      dashQueued = true;
-      onDash?.();
+      touchCharge = true;
+      chargeLatch = true;
     }, { passive: false });
+    const releaseDash = (e) => {
+      e.preventDefault();
+      if (!touchCharge) return;
+      touchCharge = false;
+      if (enabled) onDash?.();
+    };
+    dashBtn.addEventListener('touchend', releaseDash, { passive: false });
+    dashBtn.addEventListener('touchcancel', releaseDash, { passive: false });
     const jumpBtn = touchRoot.querySelector('.jump-btn');
     jumpBtn.textContent = STR.jump;
     jumpBtn.addEventListener('touchstart', (e) => {
@@ -117,10 +138,9 @@ export function createInput({ onEmote, onDash, onJump, touchRoot }) {
     if (Math.hypot(x, z) < PAD_DEAD_ZONE) x = z = 0;
     // A pula; X, B, Y, LB ou RB dão dash
     const dash = [1, 2, 3, 4, 5].some((b) => pad.buttons[b]?.pressed);
-    if (dash && !padDashWas && enabled) {
-      dashQueued = true;
-      onDash?.();
-    }
+    if (dash && !padDashWas && enabled) chargeLatch = true;
+    if (!dash && padDashWas && enabled) onDash?.();
+    padCharge = dash;
     padDashWas = dash;
     const jump = !!pad.buttons[0]?.pressed;
     if (jump && !padJumpWas && enabled) {
@@ -140,9 +160,9 @@ export function createInput({ onEmote, onDash, onJump, touchRoot }) {
   return {
     setEnabled(on) {
       enabled = on;
-      if (!on) dashQueued = jumpQueued = false;
+      if (!on) jumpQueued = keyCharge = touchCharge = chargeLatch = false;
     },
-    // Chamado a cada envio de input; dash e pulo são consumidos aqui.
+    // Chamado a cada envio de input; o pulo é consumido aqui.
     read() {
       let x = (held('right') ? 1 : 0) - (held('left') ? 1 : 0);
       let z = (held('down') ? 1 : 0) - (held('up') ? 1 : 0);
@@ -154,10 +174,10 @@ export function createInput({ onEmote, onDash, onJump, touchRoot }) {
         x /= len;
         z /= len;
       }
-      const dash = dashQueued && enabled;
       const jump = jumpQueued && enabled;
-      dashQueued = jumpQueued = false;
-      return { x: enabled ? x : 0, z: enabled ? z : 0, dash, jump };
+      const charge = enabled && (keyCharge || touchCharge || padCharge || chargeLatch);
+      jumpQueued = chargeLatch = false;
+      return { x: enabled ? x : 0, z: enabled ? z : 0, jump, charge };
     },
     isTouch: () => !!touch,
   };

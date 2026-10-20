@@ -2,7 +2,7 @@
 // Prioridade (GDD): fugir da borda → pegar power-up → caçar → dar dash.
 // O tempo de reação é um atraso entre decidir e aplicar o input.
 
-import { PHYSICS, ARENA, BOTS, HILL, HEALTH } from '../shared/constants.js';
+import { PHYSICS, ARENA, BOTS, HILL, HEALTH, CHARGE } from '../shared/constants.js';
 import { PHASE, PLAYER_STATE as ST } from '../shared/messages.js';
 import { timeToBar, hexIntact } from './minigames.js';
 import { HEX_TILES } from '../shared/hexgrid.js';
@@ -28,11 +28,20 @@ export function createBrain(difficulty, rng = Math.random) {
 export function botThink(game, p, now) {
   const brain = p.bot;
   if (brain.difficulty === 'dummy') return; // boneco do tutorial: fica parado
+  // Dash carregado: segura até chargeUntil e solta (o dash sai na direção do momento)
+  if (brain.chargeUntil && (now >= brain.chargeUntil || p.st !== ST.ALIVE)) {
+    brain.chargeUntil = 0;
+    p.charging = false;
+  }
   while (brain.queue.length && brain.queue[0].at <= now) {
     const d = brain.queue.shift();
     p.inputX = d.x;
     p.inputZ = d.z;
-    if (d.dash) p.dashBuffer = PHYSICS.DASH_BUFFER;
+    if (d.dash && p.charging) continue; // já está carregando
+    if (d.dash && d.charge) {
+      brain.chargeUntil = now + d.charge;
+      p.charging = true;
+    } else if (d.dash) p.dashBuffer = PHYSICS.DASH_BUFFER;
     if (d.jump) p.jumpBuffer = PHYSICS.JUMP_BUFFER;
   }
   if (now < brain.nextThink) return;
@@ -40,6 +49,10 @@ export function botThink(game, p, now) {
   const cfg = BOTS.DIFFICULTY[brain.difficulty] ?? BOTS.DIFFICULTY.medium;
   const d = decide(game, p, cfg, brain, now);
   d.jump = !d.dash && wantsJump(game, p, cfg, brain);
+  // Às vezes carrega o dash em vez de dar na hora: metade das vezes até encher
+  if (d.dash && brain.rng() < (cfg.chargeChance ?? 0)) {
+    d.charge = brain.rng() < 0.5 ? CHARGE.TIME + 0.05 : 0.35 + brain.rng() * 0.45;
+  }
   brain.queue.push({ at: now + cfg.reactionMs / 1000, ...d });
 }
 

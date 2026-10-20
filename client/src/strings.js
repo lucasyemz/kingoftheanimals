@@ -82,6 +82,7 @@ export const STR = {
     'Dash into others to knock them off the island!',
     'Jump over the neon bar, over ice holes and over a dash coming at you.',
     'Space jumps, E dashes. You can dash in the air too!',
+    'Hold E to charge your dash. A full bar stuns whoever you hit!',
     'Less health = you fly farther. Watch your bar!',
     'Two dashes from two animals in a row leave you dizzy for a second.',
     'Party mode picks a different minigame every round.',
@@ -270,6 +271,6 @@ export const STR = {
   rotatePhone: 'Turn your phone sideways to play',
   dash: 'DASH',
   jump: 'JUMP',
-  controls: [['Space', 'Jump'], ['E', 'Dash']],
+  controls: [['Space', 'Jump'], ['E', 'Dash (hold to charge)']],
   dazed: 'Dizzy!',
 };

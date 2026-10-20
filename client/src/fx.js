@@ -247,9 +247,16 @@ export function createFx({ world, ui, hooks }) {
       ui.countdown(STR.countdown[n] ?? '');
     },
 
-    [EVENT.DASH]: ({ id }) => {
+    [EVENT.DASH]: ({ id, c }) => {
       const a = animal(id);
       if (!a) return;
+      if (c) {
+        // Dash carregado: mais pesado, com faísca na cor do jogador (cheio: onda de choque)
+        const { x, z } = a.root.position;
+        sound('whoosh', { volume: isMe(id) ? 0.7 : 0.4, rate: 0.75 - c * 0.15 });
+        burst(x, 0.5, z, { tex: 'spark', additive: true, count: Math.round(6 + c * 14), life: [0.2, 0.45], speed: [3, 6], size: [0.15, 0.3], color: hooks.color(id) });
+        if (c >= 1) shockwave(x, z, '#ffd23f', { size: 1.6, duration: 0.25, opacity: 0.8 });
+      }
       if (!hooks.wasLocalDash(id)) {
         sound('whoosh', { volume: isMe(id) ? 0.6 : 0.3, rate: rand(0.9, 1.15) });
         a.dashStretch();
@@ -263,8 +270,15 @@ export function createFx({ world, ui, hooks }) {
       sound('pop', { volume: 0.25, rate: rand(1.5, 1.8) });
     },
 
-    [EVENT.DASH_HIT]: ({ id, target, x, z, dazed }) => {
+    [EVENT.DASH_HIT]: ({ id, target, x, z, dazed, charge }) => {
       const mine = isMe(id) || isMe(target);
+      if (charge >= 1) {
+        // Golpe com carga cheia: tranco maior
+        sound('explosion', { volume: mine ? 0.55 : 0.3, rate: 1.4 });
+        const shake = mine ? FX.SHAKE_HIT_ME : FX.SHAKE_HIT;
+        world.shakeCamera({ ...shake, strength: shake.strength * 1.6 });
+        shockwave(x, z, '#ffd23f', { size: 3, duration: 0.35, opacity: 0.9 });
+      }
       if (dazed) {
         // Dois golpes seguidos: tonto
         sound('pop', { volume: mine ? 0.8 : 0.45, rate: 0.6 });
@@ -487,6 +501,11 @@ export function createFx({ world, ui, hooks }) {
     },
     landDust(x, z, y = 0) {
       burst(x, y + 0.1, z, { tex: 'smoke', count: 6, life: [0.25, 0.5], speed: [0.8, 1.8], size: [0.25, 0.45], color: '#e8dcc8', radius: 0.35 });
+    },
+    // Barra do dash cheia (só o próprio bicho): bipe e vibração curta
+    chargeFull() {
+      sound('beep', { volume: 0.35, rate: 1.6 });
+      hooks.vibrate?.(25);
     },
     localDash(a) {
       sound('whoosh', { volume: 0.6, rate: rand(0.9, 1.15) });
