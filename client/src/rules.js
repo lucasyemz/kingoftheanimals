@@ -41,7 +41,7 @@ export function createRules(world) {
   const hill = new THREE.Group();
   const hillDisc = new THREE.Mesh(
     new THREE.CircleGeometry(HILL.RADIUS, 48).rotateX(-Math.PI / 2),
-    new THREE.MeshBasicMaterial({ color: '#ffd23f', transparent: true, opacity: 0.28, depthWrite: false }),
+    new THREE.MeshBasicMaterial({ color: '#ffd23f', transparent: true, opacity: 0.38, depthWrite: false }),
   );
   const hillRing = new THREE.Mesh(
     new THREE.RingGeometry(HILL.RADIUS - 0.12, HILL.RADIUS, 64).rotateX(-Math.PI / 2),
@@ -50,9 +50,29 @@ export function createRules(world) {
   hillDisc.position.y = FLOOR_Y;
   hillRing.position.y = FLOOR_Y + 0.005;
   hillDisc.renderOrder = hillRing.renderOrder = 1;
-  hill.add(hillDisc, hillRing);
+  // Coluna de luz em volta da colina: dá para achar de longe em qualquer chão
+  const hillBeam = new THREE.Mesh(
+    new THREE.CylinderGeometry(HILL.RADIUS, HILL.RADIUS, 2.6, 48, 1, true),
+    new THREE.MeshBasicMaterial({ color: '#ffd23f', transparent: true, opacity: 0.22, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending }),
+  );
+  hillBeam.position.y = 1.3;
+  hill.add(hillDisc, hillRing, hillBeam);
   hill.visible = false;
   root.add(hill);
+  // Próximo lugar da colina: anel tracejado piscando
+  const nextHill = new THREE.Group();
+  for (let i = 0; i < 16; i++) {
+    const a0 = (i / 16) * Math.PI * 2;
+    const dash = new THREE.Mesh(
+      new THREE.RingGeometry(HILL.RADIUS - 0.12, HILL.RADIUS, 6, 1, a0, (Math.PI * 2) / 32).rotateX(-Math.PI / 2),
+      new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.9, depthWrite: false }),
+    );
+    dash.position.y = FLOOR_Y + 0.01;
+    dash.renderOrder = 1;
+    nextHill.add(dash);
+  }
+  nextHill.visible = false;
+  root.add(nextHill);
 
   // ---------- Buracos no gelo ----------
   const crackTex = crackTexture();
@@ -176,12 +196,27 @@ export function createRules(world) {
 
       // Colina
       hill.visible = !!a.hill;
+      nextHill.visible = !!a.hill?.next;
+      if (a.hill?.next) {
+        nextHill.position.set(a.hill.next.x, 0, a.hill.next.z);
+        nextHill.rotation.y += dt * 1.5;
+        const blink = 0.35 + 0.6 * Math.abs(Math.sin(performance.now() / 160));
+        nextHill.children.forEach((d) => (d.material.opacity = blink));
+      }
       if (a.hill) {
-        const inside = s.players.filter((p) => (p.st === 'alive' || p.st === 'dashing' || p.st === 'stunned') && Math.hypot(p.x, p.z) < HILL.RADIUS);
+        // a colina desliza até o lugar novo (não teleporta na tela)
+        const k = Math.min(1, dt * 10);
+        hill.position.x += ((a.hill.x ?? 0) - hill.position.x) * k;
+        hill.position.z += ((a.hill.z ?? 0) - hill.position.z) * k;
+        const hx = a.hill.x ?? 0;
+        const hz = a.hill.z ?? 0;
+        const inside = s.players.filter((p) => (p.st === 'alive' || p.st === 'dashing' || p.st === 'stunned') && Math.hypot(p.x - hx, p.z - hz) < HILL.RADIUS);
         const color = a.hill.contested ? '#ff6b75' : inside.length === 1 ? colorOf(players[inside[0].id]) : '#ffd23f';
         hillRing.material.color.set(color);
         hillDisc.material.color.set(color);
-        hillDisc.material.opacity = 0.22 + Math.sin(performance.now() / 300) * 0.06;
+        hillBeam.material.color.set(color);
+        hillBeam.material.opacity = 0.16 + Math.sin(performance.now() / 250) * 0.06;
+        hillDisc.material.opacity = 0.34 + Math.sin(performance.now() / 300) * 0.08;
       }
 
       // Gelo
@@ -233,7 +268,8 @@ export function createRules(world) {
     reset() {
       for (const m of holes.values()) m.group.removeFromParent();
       holes.clear();
-      hill.visible = wind.visible = sweeper.visible = bomb.visible = false;
+      hill.visible = nextHill.visible = wind.visible = sweeper.visible = bomb.visible = false;
+      hill.position.set(0, 0, 0);
     },
   };
 }

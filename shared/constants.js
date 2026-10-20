@@ -211,8 +211,22 @@ export const POTATO = {
 // de pé, como no clássico).
 export const HILL = {
   RADIUS: 2.4,
-  TARGET: 15,                 // segundos sozinho na colina para vencer
+  TARGET: 12,                 // segundos sozinho na colina para vencer
   CONTESTED_RATE: 0.5,
+  // A colina muda de lugar: o próximo lugar pisca no chão antes de ela pular para lá
+  MOVE_EVERY: 10,
+  MOVE_WARNING: 3,
+  FIRST_AT_CENTER: true,      // a primeira colina é no meio
+  // Quem cai volta para a arena (só a barra decide a rodada) e perde parte da barra
+  RESPAWN: 1.5,               // segundos depois de sumir no abismo
+  MIN_ARENA: 5.5,             // os anéis param de cair aqui (a colina anda e precisa de espaço)
+  FALL_PENALTY: 0.25,         // perde 25 % do que já tinha
+  // Acabou o tempo (90 s): vence quem tem a barra mais cheia
+  // No Rei da colina o mapa sempre atrapalha, em qualquer cenário: vento e buracos
+  HAZARDS: [
+    { type: 'wind', every: 7, warning: 1.6, duration: 2.4, accel: 7 },
+    { type: 'ice', every: 3.5, crack: 1.5, open: 4.5, radius: 1.2, max: 3, firstAt: 4 },
+  ],
 };
 
 // ---------- Partida rápida (salas públicas) ----------

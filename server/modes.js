@@ -2,7 +2,7 @@
 // giratória) e os modos Batata quente e Rei da colina. Funções puras sobre o Game,
 // chamadas pelo tick; também rodam no navegador (Single Player e tutorial).
 
-import { PHYSICS, POTATO, HILL } from '../shared/constants.js';
+import { PHYSICS, POTATO, HILL, MATCH } from '../shared/constants.js';
 import { PLAYER_STATE as ST, EVENT } from '../shared/messages.js';
 import { sweepBar } from './minigames.js';
 
@@ -11,13 +11,18 @@ const standing = (p) => p.st === ST.ALIVE || p.st === ST.DASHING || p.st === ST.
 
 // ---------- Estado da rodada ----------
 
-export function resetRoundRules(game, hazard) {
-  game.hazard = hazard ?? null;
-  game.wind = { phase: 'idle', t: 0, dx: 0, dz: 0, next: hazard?.type === 'wind' ? hazard.every : 0 };
+// hazards: lista de obstáculos da rodada (o do cenário e, no Rei da colina, vento e buracos)
+export function resetRoundRules(game, hazards = []) {
+  game.hazards = hazards.filter(Boolean);
+  const of = (type) => game.hazards.find((h) => h.type === type);
+  game.wind = { phase: 'idle', t: 0, dx: 0, dz: 0, next: of('wind')?.every ?? 0 };
   game.holes = [];
   game.nextHoleId = 1;
-  game.holeTimer = hazard?.type === 'ice' ? hazard.every - (hazard.firstAt ?? hazard.every) : 0;
-  game.sweep = hazard?.type === 'sweeper' ? { angle: 0, t: 0 } : null;
+  const ice = of('ice');
+  game.holeTimer = ice ? ice.every - (ice.firstAt ?? ice.every) : 0;
+  game.sweep = of('sweeper') ? { angle: 0, t: 0 } : null;
+  // Rei da colina: onde está a colina e para onde ela vai
+  game.hill = game.mode === 'hill' ? { x: 0, z: 0, next: null, t: 0 } : null;
   game.potato = null;
   game.potatoWait = POTATO.FIRST_DELAY;
   game.potatoFuse = POTATO.FUSE;
@@ -29,11 +34,12 @@ export function resetRoundRules(game, hazard) {
 // ---------- Obstáculos ----------
 
 export function updateHazard(game, dt) {
-  const h = game.hazard;
-  if (!h || game.debug.tutorial) return;
-  if (h.type === 'wind') updateWind(game, h, dt);
-  if (h.type === 'ice') updateIce(game, h, dt);
-  if (h.type === 'sweeper') updateSweeper(game, h, dt);
+  if (game.debug.tutorial) return;
+  for (const h of game.hazards) {
+    if (h.type === 'wind') updateWind(game, h, dt);
+    if (h.type === 'ice') updateIce(game, h, dt);
+    if (h.type === 'sweeper') updateSweeper(game, h, dt);
+  }
 }
 
 function updateWind(game, h, dt) {
@@ -77,16 +83,18 @@ function updateIce(game, h, dt) {
   game.holeTimer += dt;
   if (game.holeTimer < h.every || game.holes.length >= h.max) return;
   game.holeTimer = 0;
-  // Longe da borda e (no Rei da colina) fora da colina
-  const minR = game.mode === 'hill' ? HILL.RADIUS + h.radius + 0.3 : 0.5;
+  // Longe da borda e (no Rei da colina) fora da colina atual e da próxima
+  const minR = 0.5;
   const maxR = game.arena.radius - h.radius - 0.6;
   if (maxR <= minR) return;
-  for (let tries = 0; tries < 8; tries++) {
+  const spots = game.hill ? [game.hill, game.hill.next].filter(Boolean) : [];
+  for (let tries = 0; tries < 10; tries++) {
     const r = minR + Math.sqrt(game.rng()) * (maxR - minR);
     const a = game.rng() * Math.PI * 2;
     const x = r2(Math.cos(a) * r);
     const z = r2(Math.sin(a) * r);
     if (game.holes.some((o) => Math.hypot(o.x - x, o.z - z) < o.r + h.radius + 1)) continue;
+    if (spots.some((s) => Math.hypot(s.x - x, s.z - z) < HILL.RADIUS + h.radius + 0.3)) continue;
     const hole = { hid: game.nextHoleId++, x, z, r: h.radius, phase: 'crack', t: 0 };
     game.holes.push(hole);
     game.event(EVENT.ICE, { hid: hole.hid, phase: 'crack', x, z, r: hole.r });
@@ -184,9 +192,58 @@ export function potatoContact(game, a, b) {
 
 // ---------- Rei da colina ----------
 
+// Um lugar novo para a colina: dentro da arena atual, longe da colina de agora e de buracos
+function pickHillSpot(game) {
+  const maxR = Math.max(0, game.arena.radius - HILL.RADIUS - 0.8);
+  let best = { x: 0, z: 0 };
+  let bestScore = -Infinity;
+  for (let i = 0; i < 12; i++) {
+    const r = Math.sqrt(game.rng()) * maxR;
+    const a = game.rng() * Math.PI * 2;
+    const x = r2(Math.cos(a) * r);
+    const z = r2(Math.sin(a) * r);
+    const far = Math.min(6, Math.hypot(x - game.hill.x, z - game.hill.z));
+    const nearHole = game.holes.some((h) => Math.hypot(h.x - x, h.z - z) < h.r + HILL.RADIUS + 0.3);
+    const score = far - (nearHole ? 10 : 0) + game.rng();
+    if (score > bestScore) {
+      bestScore = score;
+      best = { x, z };
+    }
+  }
+  return best;
+}
+
+function moveHill(game) {
+  const hill = game.hill;
+  const to = hill.next ?? pickHillSpot(game);
+  Object.assign(hill, { x: to.x, z: to.z, next: null, t: 0 });
+  game.event(EVENT.HILL_MOVE, { x: hill.x, z: hill.z });
+}
+
 export function updateHill(game, dt) {
   if (game.mode !== 'hill') return null;
-  const inside = game.participants.filter((p) => standing(p) && Math.hypot(p.x, p.z) < HILL.RADIUS);
+  const hill = game.hill;
+  hill.t += dt;
+  // Avisa o próximo lugar e depois pula para lá
+  if (!hill.next && hill.t >= HILL.MOVE_EVERY - HILL.MOVE_WARNING) {
+    hill.next = pickHillSpot(game);
+    game.event(EVENT.HILL_NEXT, { x: hill.next.x, z: hill.next.z });
+  }
+  if (hill.t >= HILL.MOVE_EVERY) moveHill(game);
+  // A arena encolheu por cima da colina: ela foge para dentro
+  const limit = game.arena.radius - HILL.RADIUS * 0.6;
+  if (Math.hypot(hill.x, hill.z) > limit) {
+    hill.next = null;
+    moveHill(game);
+  }
+  if (hill.next && Math.hypot(hill.next.x, hill.next.z) > limit) hill.next = pickHillSpot(game);
+
+  const inside = game.participants.filter((p) => standing(p) && (p.y ?? 0) < 0.6 && Math.hypot(p.x - hill.x, p.z - hill.z) < HILL.RADIUS);
+  // Acabou o tempo: vence quem encheu mais a barra (não tem morte súbita aqui)
+  if (game.roundTime >= MATCH.ROUND_MAX_TIME) {
+    const top = [...game.participants].sort((a, b) => (game.hillScores[b.id] ?? 0) - (game.hillScores[a.id] ?? 0))[0];
+    if (top) return top;
+  }
   game.hillContested = inside.length > 1;
   // Sozinho conta inteiro; disputando, cada um conta pela metade
   const rate = inside.length > 1 ? HILL.CONTESTED_RATE : 1;
@@ -202,12 +259,18 @@ export function updateHill(game, dt) {
 
 export function rulesPayload(game) {
   const out = {};
-  if (game.hazard?.type === 'wind') out.wind = { phase: game.wind.phase, dx: game.wind.dx, dz: game.wind.dz };
-  if (game.hazard?.type === 'ice') out.holes = game.holes.map((h) => ({ hid: h.hid, x: h.x, z: h.z, r: h.r, phase: h.phase }));
+  const wind = game.hazards.find((h) => h.type === 'wind');
+  if (wind) out.wind = { phase: game.wind.phase, dx: game.wind.dx, dz: game.wind.dz, a: wind.accel };
+  if (game.hazards.some((h) => h.type === 'ice')) out.holes = game.holes.map((h) => ({ hid: h.hid, x: h.x, z: h.z, r: h.r, phase: h.phase }));
   if (game.sweep) out.sweep = r2(game.sweep.angle);
   if (game.mode === 'potato') out.potato = game.potato ? { id: game.potato.id, fuse: r2(Math.max(0, game.potato.fuse)) } : null;
   if (game.mode === 'hill') {
+    const h = game.hill;
     out.hill = {
+      x: h.x,
+      z: h.z,
+      next: h.next,
+      moveIn: Math.max(0, Math.ceil(HILL.MOVE_EVERY - h.t)),
       scores: Object.fromEntries(Object.entries(game.hillScores).map(([k, v]) => [k, r2(v)])),
       contested: game.hillContested,
     };

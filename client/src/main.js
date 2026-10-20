@@ -666,10 +666,9 @@ function stepPredicted(inp) {
   if (inp.jump) pm.jumpBuffer = PHYSICS.JUMP_BUFFER;
   // Rajada de vento: o servidor empurra todo mundo; a previsão faz igual
   const w = latest?.arena.wind;
-  const hz = SCENARIOS[lobby?.scenario]?.hazard;
-  if (w?.phase === 'blow' && hz?.type === 'wind' && PREDICTABLE.has(pm.st)) {
-    pm.vx += w.dx * hz.accel * NET.TICK_DT;
-    pm.vz += w.dz * hz.accel * NET.TICK_DT;
+  if (w?.phase === 'blow' && w.a && PREDICTABLE.has(pm.st)) {
+    pm.vx += w.dx * w.a * NET.TICK_DT;
+    pm.vz += w.dz * w.a * NET.TICK_DT;
   }
   movePlayer(pm, NET.TICK_DT, { control: true, friction: predictionFriction() });
   // ?nofall=1: o servidor segura na borda; a previsão faz o mesmo
@@ -1047,7 +1046,7 @@ function modeHud(s) {
     if (myId && !rows.some((r) => r.me) && players[myId] && !players[myId].spectator) {
       rows.push({ p: players[myId], v: Math.min(1, (hill.scores[myId] ?? 0) / HILL.TARGET), me: true });
     }
-    ui.hill(rows, hill.contested);
+    ui.hill(rows, hill.contested, hill.moveIn);
   } else {
     ui.hill(null);
   }

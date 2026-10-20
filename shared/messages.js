@@ -73,6 +73,9 @@ export const EVENT = {
   BALL: 'ball',                    // { id }   bola nova entrando na arena (Chuva de bolas)
   BALL_HIT: 'ballHit',             // { id, x, z }   a bola atropelou id
   GRAB: 'grab',                    // { id, target }   id agarrou target
+  HILL_NEXT: 'hillNext',           // { x, z }   a colina vai para cá daqui a pouco
+  HILL_MOVE: 'hillMove',           // { x, z }   a colina mudou de lugar
+  RESPAWN: 'respawn',              // { id, x, z }   voltou para a arena (Rei da colina)
   LAYER_DROP: 'layerDrop',         // { id, layer }   caiu para o andar de baixo (Chão que some)
   GRAB_RELEASE: 'grabRelease',     // { id, target, thrown: bool }
 };

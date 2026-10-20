@@ -5,7 +5,7 @@
 import {
   NET, ROOM, PHYSICS, ARENA, MATCH, POWERUPS, BOTS, EMOTES,
   SCENARIOS, SCENARIO_ORDER, ANIMALS, PLAYER_COLORS, MODES, POTATO, QUICK, RECONNECT,
-  MINIGAMES, FORMATS, SHOW_POOL, SHOW, JUMPROPE, BALLS, GRAB, HATS,
+  MINIGAMES, FORMATS, SHOW_POOL, SHOW, JUMPROPE, BALLS, GRAB, HATS, HILL,
 } from '../shared/constants.js';
 import { MSG, PHASE, PLAYER_STATE as ST, EVENT, JOIN_ERROR } from '../shared/messages.js';
 import { createBrain, botThink } from './bots.js';
@@ -142,7 +142,7 @@ export class Game {
     this.nextBotId = 1;
     this.nextPowerupId = 1;
     this.resetArena();
-    resetRoundRules(this, null);
+    resetRoundRules(this, []);
   }
 
   // ---------- Jogadores ----------
@@ -373,7 +373,9 @@ export class Game {
     this.resetArena();
     // Obstáculos do cenário só nos modos clássicos; os minijogos já mudam a arena
     const scenarioHazard = ['classic', 'potato', 'hill'].includes(this.mode) ? SCENARIOS[this.scenario].hazard : null;
-    resetRoundRules(this, this.debug.tutorial ? null : scenarioHazard);
+    // No Rei da colina, vento e buracos em qualquer cenário (sem repetir o do cenário)
+    const extra = this.mode === 'hill' ? HILL.HAZARDS.filter((h) => h.type !== scenarioHazard?.type) : [];
+    resetRoundRules(this, this.debug.tutorial ? [] : [scenarioHazard, ...extra]);
     resetMinigame(this);
     // Eliminação: quantos passam desta fase (com poucos, é a final)
     const alive = this.participants.length;
@@ -468,6 +470,7 @@ export class Game {
         }
         const hillWinner = updateHill(this, dt);
         if (hillWinner) this.endRound(hillWinner);
+        else if (this.mode === 'hill') this.respawnFallen();
         else this.checkRoundEnd();
         break;
       }
@@ -503,6 +506,7 @@ export class Game {
       return;
     }
     if (a.radius - ARENA.RING_WIDTH < ARENA.MIN_RADIUS - 1e-6) return; // só sobrou o miolo
+    if (this.mode === 'hill' && a.radius - ARENA.RING_WIDTH < HILL.MIN_ARENA) return; // a colina precisa de espaço
     this.ringTimer += dt;
     if (!a.warning && this.ringTimer >= this.ringInterval - ARENA.RING_WARNING) {
       a.warning = true;
@@ -825,6 +829,11 @@ export class Game {
     p.st = ST.FALLING;
     p.stT = PHYSICS.FALL_DURATION;
     p.fallR = r;
+    if (this.mode === 'hill' && !afterRound) {
+      // Rei da colina: volta para a arena daqui a pouco, com a barra menor
+      p.respawnAt = this.simTime + PHYSICS.FALL_DURATION + HILL.RESPAWN;
+      this.hillScores[p.id] = (this.hillScores[p.id] ?? 0) * (1 - HILL.FALL_PENALTY);
+    }
     const credited = p.lastToucher && this.simTime - p.touchT <= PHYSICS.KO_CREDIT_WINDOW;
     const by = credited && this.players.has(p.lastToucher) ? p.lastToucher : null;
     if (!afterRound) {
@@ -960,6 +969,29 @@ export class Game {
     });
     this.event(EVENT.PODIUM, { champion: champion.id });
     this.sendLobby();
+  }
+
+  // Rei da colina: quem caiu volta num lugar seguro, longe da colina e dos buracos
+  respawnFallen() {
+    for (const p of this.participants) {
+      if (p.st !== ST.OUT || !(p.respawnAt <= this.simTime)) continue;
+      const maxR = Math.max(1, this.arena.radius - 1.5);
+      let spot = { x: 0, z: 0 };
+      for (let i = 0; i < 12; i++) {
+        const r = maxR * (0.6 + 0.4 * this.rng());
+        const a = this.rng() * Math.PI * 2;
+        spot = { x: Math.cos(a) * r, z: Math.sin(a) * r };
+        const bad = this.holes.some((h) => Math.hypot(h.x - spot.x, h.z - spot.z) < h.r + 1) ||
+          Math.hypot(spot.x - this.hill.x, spot.z - this.hill.z) < HILL.RADIUS + 1;
+        if (!bad) break;
+      }
+      Object.assign(p, {
+        ...spot, vx: 0, vz: 0, y: 0, vy: 0, st: ST.ALIVE, stT: 0, layer: 0,
+        dir: Math.atan2(-spot.x, -spot.z), lastToucher: null, respawnAt: null,
+        grab: null, grabbing: false, grabbed: false, potato: false,
+      });
+      this.event(EVENT.RESPAWN, { id: p.id, x: r2(p.x), z: r2(p.z) });
+    }
   }
 
   // ---------- Partida rápida ----------

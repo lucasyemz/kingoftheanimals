@@ -245,8 +245,12 @@ function decide(game, p, cfg, brain, now) {
       }
     }
   }
-  if (game.mode === 'hill') {
-    const inHill = (q) => Math.hypot(q.x, q.z) < HILL.RADIUS;
+  if (game.mode === 'hill' && game.hill) {
+    // A colina anda: os bots mais espertos já vão para o próximo lugar antes da troca
+    const hill = game.hill;
+    const early = hill.next && HILL.MOVE_EVERY - hill.t < 0.8 + cfg.positionChance * 1.5;
+    const hc = early ? hill.next : hill;
+    const inHill = (q) => Math.hypot(q.x - hc.x, q.z - hc.z) < HILL.RADIUS;
     const rivals = others.filter(inHill);
     if (!inHill(p)) {
       // Vai para a colina; se tem alguém lá, empurra no caminho
@@ -254,15 +258,15 @@ function decide(game, p, cfg, brain, now) {
       if (t && dashReady && Math.hypot(t.x - p.x, t.z - p.z) < BOTS.DASH_RANGE + 1 && rng() < 0.5) {
         return { ...unit(t.x - p.x, t.z - p.z), dash: true };
       }
-      return toward(0, 0);
+      return toward(hc.x, hc.z);
     }
     if (rivals.length) {
       const t = rivals.sort((a, b) => Math.hypot(a.x - p.x, a.z - p.z) - Math.hypot(b.x - p.x, b.z - p.z))[0];
       const dash = dashReady && Math.hypot(t.x - p.x, t.z - p.z) < BOTS.DASH_RANGE + 1;
       return { ...unit(t.x - p.x, t.z - p.z), dash };
     }
-    // Sozinho na colina: fica perto do meio
-    if (r > HILL.RADIUS * 0.5) return toward(0, 0);
+    // Sozinho na colina: fica perto do meio dela
+    if (Math.hypot(p.x - hc.x, p.z - hc.z) > HILL.RADIUS * 0.5) return toward(hc.x, hc.z);
     return { x: 0, z: 0, dash: false };
   }
 

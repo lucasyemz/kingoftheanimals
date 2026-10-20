@@ -432,7 +432,9 @@ export function createUI(handlers) {
         state.phase === PHASE.SUDDEN_DEATH ? STR.suddenDeath : `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
       $('.hud-timer', root).classList.toggle('danger', state.phase === PHASE.SUDDEN_DEATH || t <= 10);
       const me = state.players.find((p) => p.id === myId);
-      $('.hud-spectating', root).hidden = !(me ? me.st === 'out' || me.st === 'falling' : true);
+      const out = me ? me.st === 'out' || me.st === 'falling' : true;
+      $('.hud-spectating', root).hidden = !out;
+      $('.hud-spectating', root).textContent = lobby?.roundMode === 'hill' && me ? STR.respawning : STR.spectating;
     },
 
     scores(lobby, wins = {}) {
@@ -552,11 +554,12 @@ export function createUI(handlers) {
     },
 
     // Rei da colina: barras de quem está mais perto de vencer
-    hill(rows, contested) {
+    hill(rows, contested, moveIn = null) {
       const el = $('.hud-hill', root);
       el.hidden = !rows;
       if (!rows) return;
-      el.innerHTML = `<div class="hill-title outlined">${STR.hillTitle}${contested ? ` · <span class="contested">${STR.hillContested}</span>` : ''}</div>` +
+      const moving = moveIn !== null && moveIn <= 3 ? ` · <span class="contested">${STR.hillMoves(moveIn)}</span>` : '';
+      el.innerHTML = `<div class="hill-title outlined">${STR.hillTitle}${contested ? ` · <span class="contested">${STR.hillContested}</span>` : ''}${moving}</div>` +
         rows.map(({ p, v, me }) => `<div class="hill-row${me ? ' mine' : ''}"><span class="name outlined" style="color:${colorOf(p)}">${esc(displayName(p))}</span><span class="bar"><i style="width:${Math.round(v * 100)}%;background:${colorOf(p)}"></i></span></div>`).join('');
     },
 

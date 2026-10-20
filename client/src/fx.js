@@ -429,6 +429,23 @@ export function createFx({ world, ui, hooks }) {
       if (isMe(id) || isMe(target)) world.shakeCamera(FX.SHAKE_HIT);
     },
 
+    [EVENT.HILL_NEXT]: () => {
+      sound('beep', { volume: 0.5, rate: 1.3 });
+    },
+
+    [EVENT.HILL_MOVE]: ({ x, z }) => {
+      sound('ding', { volume: 0.6, rate: 0.9 });
+      ui.toast(STR.hillMoved);
+      burst(x, 0.2, z, { tex: 'spark', additive: true, count: 24, life: [0.5, 1], speed: [1, 3], size: [0.2, 0.4], color: '#ffd23f', radius: 1.8, lift: 2 });
+    },
+
+    [EVENT.RESPAWN]: ({ id, x, z }) => {
+      sound('pop', { volume: isMe(id) ? 0.7 : 0.3, rate: 1.1 });
+      burst(x, 0.4, z, { tex: 'smoke', count: 14, life: [0.4, 0.8], speed: [1, 2.5], size: [0.4, 0.8], color: '#ffffff', radius: 0.5 });
+      const a = animal(id);
+      if (a) a.label.visible = true;
+    },
+
     [EVENT.LAYER_DROP]: ({ id }) => {
       sound('whoosh', { volume: isMe(id) ? 0.6 : 0.25, rate: 0.7 });
       if (isMe(id)) world.shakeCamera(FX.SHAKE_RING);

@@ -126,7 +126,7 @@ export const STR = {
   modeHints: {
     classic: 'Last one standing wins the round',
     potato: 'Pass the bomb by bumping into someone. Don\'t be holding it when it blows!',
-    hill: 'Stand in the golden circle alone. First to fill the bar wins',
+    hill: 'Stand in the golden circle. It moves every 10 s and the map fights back — falling only costs part of your bar!',
     jumprope: 'Jump the yellow bar. Stay on the ground when the red one comes!',
     hex: 'Tiles fall after you step on them. Three floors — keep moving!',
     balls: 'Giant balls roll across the arena. Dodge them!',
@@ -172,6 +172,9 @@ export const STR = {
   feedBoom: 'blew up',
   hillTitle: 'Hill',
   hillContested: 'Contested!',
+  hillMoves: (s) => `moves in ${s}`,
+  hillMoved: 'The hill moved!',
+  respawning: 'Back in a moment…',
   windWarning: 'Wind incoming!',
   iceCrack: 'The ice is cracking!',
   winsToGo: 'First to 3 wins',
