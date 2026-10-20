@@ -179,91 +179,91 @@
   },
   "sounds": {
     "alarm": [
-      "sounds/alarm_1.mp3",
-      "sounds/alarm_2.mp3"
+      "sounds/alarm_1.mp3?v=2",
+      "sounds/alarm_2.mp3?v=2"
     ],
     "beep": [
-      "sounds/beep_1.mp3",
-      "sounds/beep_2.mp3"
+      "sounds/beep_1.mp3?v=2",
+      "sounds/beep_2.mp3?v=2"
     ],
     "boing": [
-      "sounds/boing_1.mp3",
-      "sounds/boing_2.mp3",
-      "sounds/boing_3.mp3"
+      "sounds/boing_1.mp3?v=2",
+      "sounds/boing_2.mp3?v=2",
+      "sounds/boing_3.mp3?v=2"
     ],
     "click": [
-      "sounds/click_1.mp3",
-      "sounds/click_2.mp3"
+      "sounds/click_1.mp3?v=2",
+      "sounds/click_2.mp3?v=2"
     ],
     "ding": [
-      "sounds/ding_1.mp3",
-      "sounds/ding_2.mp3",
-      "sounds/ding_3.mp3"
+      "sounds/ding_1.mp3?v=2",
+      "sounds/ding_2.mp3?v=2",
+      "sounds/ding_3.mp3?v=2"
     ],
     "emote1": [
-      "sounds/emote1_1.mp3",
-      "sounds/emote1_2.mp3"
+      "sounds/emote1_1.mp3?v=2",
+      "sounds/emote1_2.mp3?v=2"
     ],
     "emote2": [
-      "sounds/emote2_1.mp3",
-      "sounds/emote2_2.mp3"
+      "sounds/emote2_1.mp3?v=2",
+      "sounds/emote2_2.mp3?v=2"
     ],
     "emote3": [
-      "sounds/emote3_1.mp3",
-      "sounds/emote3_2.mp3"
+      "sounds/emote3_1.mp3?v=2",
+      "sounds/emote3_2.mp3?v=2"
     ],
     "emote4": [
-      "sounds/emote4_1.mp3",
-      "sounds/emote4_2.mp3"
+      "sounds/emote4_1.mp3?v=2",
+      "sounds/emote4_2.mp3?v=2"
     ],
     "explosion": [
-      "sounds/explosion_1.mp3",
-      "sounds/explosion_2.mp3"
+      "sounds/explosion_1.mp3?v=2",
+      "sounds/explosion_2.mp3?v=2"
     ],
     "fanfare": [
-      "sounds/fanfare_1.mp3",
-      "sounds/fanfare_2.mp3"
+      "sounds/fanfare_1.mp3?v=2",
+      "sounds/fanfare_2.mp3?v=2"
     ],
     "go": [
-      "sounds/go_1.mp3",
-      "sounds/go_2.mp3",
-      "sounds/go_3.mp3"
+      "sounds/go_1.mp3?v=2",
+      "sounds/go_2.mp3?v=2",
+      "sounds/go_3.mp3?v=2"
     ],
     "kingslayer": [
-      "sounds/kingslayer_1.mp3",
-      "sounds/kingslayer_2.mp3"
+      "sounds/kingslayer_1.mp3?v=2",
+      "sounds/kingslayer_2.mp3?v=2"
     ],
     "poof": [
-      "sounds/poof_1.mp3",
-      "sounds/poof_2.mp3",
-      "sounds/poof_3.mp3"
+      "sounds/poof_1.mp3?v=2",
+      "sounds/poof_2.mp3?v=2",
+      "sounds/poof_3.mp3?v=2"
     ],
     "pop": [
-      "sounds/pop_1.mp3",
-      "sounds/pop_2.mp3",
-      "sounds/pop_3.mp3"
+      "sounds/pop_1.mp3?v=2",
+      "sounds/pop_2.mp3?v=2",
+      "sounds/pop_3.mp3?v=2"
     ],
     "rumble": [
-      "sounds/rumble_1.mp3",
-      "sounds/rumble_2.mp3"
+      "sounds/rumble_1.mp3?v=2",
+      "sounds/rumble_2.mp3?v=2"
     ],
     "scream": [
-      "sounds/scream_1.mp3",
-      "sounds/scream_2.mp3",
-      "sounds/scream_3.mp3"
+      "sounds/scream_1.mp3?v=2",
+      "sounds/scream_2.mp3?v=2",
+      "sounds/scream_3.mp3?v=2"
     ],
     "victory": [
-      "sounds/victory_1.mp3",
-      "sounds/victory_2.mp3"
+      "sounds/victory_1.mp3?v=2",
+      "sounds/victory_2.mp3?v=2"
     ],
     "whoosh": [
-      "sounds/whoosh_1.mp3",
-      "sounds/whoosh_2.mp3"
+      "sounds/whoosh_1.mp3?v=2",
+      "sounds/whoosh_2.mp3?v=2"
     ]
   },
   "music": {
-    "lobby": "music/lobby.mp3",
-    "match": "music/match.mp3"
+    "lobby": "music/lobby.mp3?v=2",
+    "match": "music/match.mp3?v=2"
   },
   "credits": [
     "Kenney (kenney.nl) — CC0: Cube Pets, Platformer Kit, Nature Kit, Particle Pack, Interface Sounds, Impact Sounds, Digital Audio, Sci-Fi Sounds, UI Audio, Voiceover Pack, Voiceover Pack: Fighter, Music Jingles",

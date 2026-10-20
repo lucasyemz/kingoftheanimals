@@ -1050,7 +1050,8 @@ async function boot() {
 }
 
 // Todos os arquivos citados no manifesto (modelos, sons, texturas)
-const ASSET_RE = /\.(glb|gltf|mp3|ogg|wav|png|jpe?g|webp)$/i;
+// "?v=2" no fim força o navegador a baixar de novo um arquivo que mudou
+const ASSET_RE = /\.(glb|gltf|mp3|ogg|wav|png|jpe?g|webp)(\?v=\w+)?$/i;
 const MODEL_RE = /\.(glb|gltf)$/i;
 const cleanPath = (url) => url.replace(/^https?:\/\/[^/]+/, '').replace(/^\//, '');
 function assetPaths(node, out = new Set()) {
@@ -1082,7 +1083,7 @@ async function glbImages(path, blob) {
 function swapPaths(node, blobs) {
   if (typeof node === 'string') {
     const b = !MODEL_RE.test(node) && blobs.get(cleanPath(node));
-    return b ? `${b}#${node.match(ASSET_RE)[0]}` : node;
+    return b ? `${b}#.${node.match(ASSET_RE)[1]}` : node;
   }
   if (Array.isArray(node)) return node.map((v) => swapPaths(v, blobs));
   if (node && typeof node === 'object') {

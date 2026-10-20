@@ -6,7 +6,7 @@ const STATS_KEY = 'kota.stats';
 
 const DEFAULTS = {
   music: 0.7,       // 0..1
-  sfx: 0.9,         // 0..1
+  sfx: 0.8,         // 0..1
   muted: false,
   graphics: 'auto', // 'auto' | 'high' | 'low'  (auto = leve no celular)
   tutorialDone: false,
