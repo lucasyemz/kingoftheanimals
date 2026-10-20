@@ -782,7 +782,9 @@ async function boot() {
   const update = () => {
     const done = progress.three[0] + progress.audio[0];
     const total = progress.three[1] + progress.audio[1];
-    loading.setProgress(total ? done / total : 0);
+    // 80 % da barra é o download (prefetch); o resto é montar modelos e sons
+    const [pd, pt] = progress.prefetch ?? [0, 0];
+    loading.setProgress((pt ? (pd / pt) * 0.8 : 0) + (total ? done / total : 0) * (pt ? 0.2 : 1));
   };
   THREE.DefaultLoadingManager.onProgress = (_, loaded, total) => {
     progress.three = [loaded, total];
@@ -795,6 +797,17 @@ async function boot() {
   } catch {
     manifest = {};
   }
+  // Baixa tudo antes, poucos por vez e tentando de novo: o link de prévia do Studio
+  // recusa (429) quando chegam dezenas de pedidos juntos e não deixa guardar em cache.
+  // Os loaders depois leem os arquivos já baixados, sem ir à rede.
+  const files = await Promise.race([
+    prefetchAssets(manifest, (done, total) => {
+      progress.prefetch = [done, total];
+      update();
+    }),
+    new Promise((r) => setTimeout(r, 30000)),
+  ]);
+  if (files) manifest = files;
   const assets = Promise.all([
     loadAnimalModels(manifest.animals),
     world.loadProps(manifest.props),
@@ -827,6 +840,93 @@ async function boot() {
       code: home.code || null,
     });
   }
+}
+
+// Todos os arquivos citados no manifesto (modelos, sons, texturas)
+const ASSET_RE = /\.(glb|gltf|mp3|ogg|wav|png|jpe?g|webp)$/i;
+const MODEL_RE = /\.(glb|gltf)$/i;
+const cleanPath = (url) => url.replace(/^https?:\/\/[^/]+/, '').replace(/^\//, '');
+function assetPaths(node, out = new Set()) {
+  if (typeof node === 'string') {
+    if (ASSET_RE.test(node)) out.add(cleanPath(node));
+  } else if (node && typeof node === 'object') {
+    for (const v of Object.values(node)) assetPaths(v, out);
+  }
+  return out;
+}
+
+// Imagens que um .glb puxa de fora (ex.: Textures/colormap.png ao lado do modelo)
+async function glbImages(path, blob) {
+  try {
+    const buf = await blob.arrayBuffer();
+    const view = new DataView(buf);
+    if (view.getUint32(0, true) !== 0x46546c67) return []; // "glTF"
+    const json = JSON.parse(new TextDecoder().decode(new Uint8Array(buf, 20, view.getUint32(12, true))));
+    const dir = path.slice(0, path.lastIndexOf('/') + 1);
+    return (json.images ?? []).filter((im) => im.uri && !im.uri.startsWith('data:')).map((im) => cleanPath(dir + im.uri));
+  } catch {
+    return [];
+  }
+}
+
+// Sons trocam o caminho pelo arquivo já baixado ("#.mp3" no fim: o Howler descobre
+// o formato pela extensão; o blob ignora o #). Modelos e texturas mantêm o caminho
+// (o .glb acha a textura ao lado dele) e o three.js troca na hora de pedir.
+function swapPaths(node, blobs) {
+  if (typeof node === 'string') {
+    const b = !MODEL_RE.test(node) && blobs.get(cleanPath(node));
+    return b ? `${b}#${node.match(ASSET_RE)[0]}` : node;
+  }
+  if (Array.isArray(node)) return node.map((v) => swapPaths(v, blobs));
+  if (node && typeof node === 'object') {
+    return Object.fromEntries(Object.entries(node).map(([k, v]) => [k, swapPaths(v, blobs)]));
+  }
+  return node;
+}
+
+// Baixa poucos arquivos por vez e tenta de novo quando o servidor recusa.
+// Devolve o manifesto apontando para os arquivos já baixados.
+async function prefetchAssets(manifest, onProgress) {
+  const queue = [...assetPaths(manifest)];
+  const seen = new Set(queue);
+  const blobs = new Map();
+  let done = 0;
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  async function get(path) {
+    for (let attempt = 0; attempt < 6; attempt++) {
+      try {
+        const res = await fetch(`/${path}`);
+        if (res.ok) {
+          const blob = await res.blob();
+          blobs.set(path, URL.createObjectURL(blob));
+          if (MODEL_RE.test(path)) {
+            for (const img of await glbImages(path, blob)) {
+              if (!seen.has(img)) {
+                seen.add(img);
+                queue.push(img);
+              }
+            }
+          }
+          return;
+        }
+        if (res.status !== 429 && res.status < 500) return;
+        const after = Number(res.headers.get('retry-after'));
+        await wait(after > 0 ? after * 1000 : 400 * 2 ** attempt);
+      } catch {
+        await wait(400 * 2 ** attempt);
+      }
+    }
+  }
+  async function worker() {
+    while (queue.length) {
+      await get(queue.shift());
+      onProgress(++done, seen.size);
+    }
+  }
+  onProgress(0, seen.size);
+  await Promise.all(Array.from({ length: 4 }, worker));
+  THREE.DefaultLoadingManager.setURLModifier((url) => blobs.get(cleanPath(url)) ?? url);
+  return swapPaths(manifest, blobs);
 }
 
 boot();

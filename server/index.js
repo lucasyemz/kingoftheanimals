@@ -53,9 +53,10 @@ if (DEV) {
 } else {
   // Atrás do proxy do Render, para saber que o endereço público é https
   app.set('trust proxy', true);
-  const indexHtml = readFileSync(path.join(DIST_DIR, 'index.html'), 'utf8');
-  // A prévia do link precisa de endereço completo: usa o host de quem pediu
+  // A prévia do link precisa de endereço completo: usa o host de quem pediu.
+  // Lido a cada pedido: um build novo entra no ar sem reiniciar o servidor.
   const sendIndex = (req, res) => {
+    const indexHtml = readFileSync(path.join(DIST_DIR, 'index.html'), 'utf8');
     res.set('Cache-Control', 'no-cache');
     // No Render, RENDER_EXTERNAL_URL já vem com o endereço público
     const origin = process.env.RENDER_EXTERNAL_URL ?? `${req.protocol}://${req.get('host')}`;
