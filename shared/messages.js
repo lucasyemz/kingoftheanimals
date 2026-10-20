@@ -17,6 +17,7 @@ export const MSG = {
   SETTINGS: 'settings', // { bots, difficulty, mode }   anfitrião mexeu no lobby; o servidor reenvia `lobby`
                         //   join também aceita { quick: true } (sala pública) e { rejoin: token } (voltar à partida)
   REMATCH: 'rematch',   // {}   botão "Rematch" do pódio: a sala volta ao lobby
+  PROFILE: 'profile',   // { animal?, hat? }   trocou de bicho ou de chapéu no lobby (ou no pódio)
 
   // servidor → todos da sala
   LOBBY: 'lobby',       // { code, hostId, phase, bots, difficulty, kingId, round, scenario, players: [LobbyPlayer] }
@@ -72,6 +73,7 @@ export const EVENT = {
   JUMP: 'jump',                    // { id }   pulou (som e poeira)
   BALL: 'ball',                    // { id }   bola nova entrando na arena (Chuva de bolas)
   BALL_HIT: 'ballHit',             // { id, x, z }   a bola atropelou id
+  SHIELD_BLOCK: 'shieldBlock',     // { id, by, x, z }   o escudo de id segurou um golpe (by: quem bateu, se foi dash)
   HILL_NEXT: 'hillNext',           // { x, z }   a colina vai para cá daqui a pouco
   HILL_MOVE: 'hillMove',           // { x, z }   a colina mudou de lugar
   RESPAWN: 'respawn',              // { id, x, z }   voltou para a arena (Rei da colina)

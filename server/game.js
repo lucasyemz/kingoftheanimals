@@ -256,6 +256,15 @@ export class Game {
   }
 
   // Retorna quantas pessoas sobraram na sala.
+  // Trocar de bicho ou de chapéu sem sair da sala (só fora da partida)
+  setProfile(id, { animal, hat } = {}) {
+    const p = this.players.get(id);
+    if (!p || p.bot || (this.phase !== PHASE.LOBBY && this.phase !== PHASE.PODIUM)) return;
+    if (ANIMALS.includes(animal)) p.animal = animal;
+    if (typeof hat === 'string' && Object.hasOwn(HATS, hat)) p.hat = hat;
+    this.sendLobby();
+  }
+
   removeHuman(id) {
     const p = this.players.get(id);
     if (!p || p.bot) return this.humans.length;
@@ -609,6 +618,7 @@ export class Game {
         if (d > cfg.radius) continue;
         const nx = d > 1e-4 ? dx / d : Math.cos(this.rng() * 7);
         const nz = d > 1e-4 ? dz / d : Math.sin(this.rng() * 7);
+        if (this.tryBlock(q)) continue;
         const k = cfg.impulse * this.pushTaken(q);
         this.damage(q, HEALTH.BOMB_DAMAGE);
         q.vx += nx * k;
@@ -639,6 +649,15 @@ export class Game {
 
   pushTaken(p) {
     return this.heaviness(p) * this.knockback(p);
+  }
+
+  // Escudo: segura um golpe e some. Retorna true se bloqueou.
+  tryBlock(p, by = null) {
+    if (p.pu !== 'shield') return false;
+    p.pu = null;
+    p.puT = 0;
+    this.event(EVENT.SHIELD_BLOCK, { id: p.id, by: by?.id ?? null, x: r2(p.x), z: r2(p.z) });
+    return true;
   }
 
   damage(p, n) {
@@ -735,8 +754,12 @@ export class Game {
         const bDash = b.st === ST.DASHING;
         const J = (aDash || bDash ? PHYSICS.DASH_PUSH_FACTOR : PHYSICS.PUSH_FACTOR) * vrel;
         // o empurrão de dash cresce com a vida perdida de quem leva
-        const ka = bDash ? this.knockback(a) * (1 + CHARGE.KNOCK_BONUS * (b.dashCharge ?? 0)) : 1;
-        const kb = aDash ? this.knockback(b) * (1 + CHARGE.KNOCK_BONUS * (a.dashCharge ?? 0)) : 1;
+        let ka = bDash ? this.knockback(a) * (1 + CHARGE.KNOCK_BONUS * (b.dashCharge ?? 0)) : 1;
+        let kb = aDash ? this.knockback(b) * (1 + CHARGE.KNOCK_BONUS * (a.dashCharge ?? 0)) : 1;
+        // Escudo: quem tem quase não se mexe e quem deu o dash é rebatido
+        const S = POWERUPS.TYPES.shield;
+        if (aDash && b.pu === 'shield') [kb, ka] = [0.15, Math.max(ka, S.bounce)];
+        if (bDash && a.pu === 'shield') [ka, kb] = [0.15, Math.max(kb, S.bounce)];
         a.vx -= nx * J * wa * ka;
         a.vz -= nz * J * wa * ka;
         b.vx += nx * J * wb * kb;
@@ -756,6 +779,11 @@ export class Game {
     attacker.st = ST.ALIVE;
     attacker.stT = 0;
     attacker.dashCharge = 0;
+    if (this.tryBlock(target, attacker)) {
+      attacker.st = ST.STUNNED;
+      attacker.stT = POWERUPS.TYPES.shield.attackerStun;
+      return;
+    }
     // Dois bichos diferentes acertam o mesmo alvo em pouco tempo: ele fica tonto
     const now = this.simTime;
     target.hits = (target.hits ?? []).filter((h) => now - h.t < HEALTH.DOUBLE_HIT_WINDOW && h.by !== attacker.id);

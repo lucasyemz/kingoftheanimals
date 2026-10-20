@@ -203,6 +203,15 @@ export class Animal {
     this.hat = null;
     this.hatId = 'none';
 
+    // Bolha do Escudo
+    this.shield = new THREE.Mesh(
+      new THREE.SphereGeometry(0.85, 24, 16),
+      new THREE.MeshBasicMaterial({ color: '#4fb0ff', transparent: true, opacity: 0.4, depthWrite: false }),
+    );
+    this.shield.position.y = 0.55;
+    this.shield.visible = false;
+    this.lift.add(this.shield);
+
     // Coroa do King
     this.crown = crownMesh(crownModel);
     this.crown.position.y = this.headY;
@@ -321,6 +330,9 @@ export class Animal {
     }
     if (this.stars.visible) this.stars.rotation.y += dt * (this.dazed ? 11 : 8);
     this.setHealth(p.hp);
+    const shielded = p.pu === 'shield' && p.st !== ST.OUT && p.st !== ST.FALLING;
+    this.shield.visible = shielded;
+    if (shielded) this.shield.material.opacity = 0.36 + Math.sin(performance.now() / 180) * 0.08;
     this.setCharge(p.charge);
     // Tonto (dois golpes seguidos): estrelas maiores enquanto dura
     const dazed = p.st === ST.STUNNED && (p.stT ?? 0) > PHYSICS.STUN_DURATION + 0.05;

@@ -200,6 +200,13 @@ function updateBalls(game, dt) {
       p.x = b.x + nx * (b.r + rad);
       p.z = b.z + nz * (b.r + rad);
       const speed = Math.hypot(b.vx, b.vz);
+      // Escudo: a bola só empurra para fora do caminho (sem tranco, sem atordoar)
+      const blocked = !b.hit?.includes(p.id) && game.tryBlock(p);
+      if (blocked) {
+        (b.shielded ??= []).push(p.id);
+        (b.hit ??= []).push(p.id);
+      }
+      if (blocked || b.shielded?.includes(p.id)) continue;
       const k = (speed * 0.6 + BALLS.KNOCK) * game.pushTaken(p);
       p.vx = b.vx * 0.5 + nx * k;
       p.vz = b.vz * 0.5 + nz * k;

@@ -282,7 +282,7 @@ function decide(game, p, cfg, brain, now) {
     const dist = Math.hypot(q.x - p.x, q.z - p.z);
     const edgeness = Math.hypot(q.x, q.z) / Math.max(edge, 0.1);
     // Médio e difícil preferem quem tem pouca vida (voa mais longe)
-    const weak = Math.pow(game.knockback(q), cfg.positionChance);
+    const weak = Math.pow(game.knockback(q), cfg.positionChance) * (q.pu === 'shield' ? 1 - cfg.positionChance * 0.7 : 1);
     const score = ((edgeness + 0.5) / (1 + dist)) * (q.id === game.kingId ? BOTS.KING_TARGET_WEIGHT : 1) * weak;
     if (score > best) {
       best = score;

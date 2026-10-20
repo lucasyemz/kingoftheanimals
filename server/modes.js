@@ -161,6 +161,7 @@ function explode(game, holder) {
     const dz = q.z - holder.z;
     const d = Math.hypot(dx, dz);
     if (d > cfg.radius) continue;
+    if (game.tryBlock(q)) continue;
     const k = cfg.impulse * (1 - d / cfg.radius * 0.5) * game.pushTaken(q);
     q.vx += (dx / (d || 1)) * k;
     q.vz += (dz / (d || 1)) * k;

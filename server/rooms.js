@@ -83,6 +83,7 @@ export function attachRooms(io) {
     socket.on(MSG.SETTINGS, (data) => room?.game.applySettings(pid, data));
     socket.on(MSG.START, (data) => room?.game.startMatch(pid, data));
     socket.on(MSG.REMATCH, () => room?.game.rematch());
+    socket.on(MSG.PROFILE, (data) => room?.game.setProfile(pid, data));
     socket.on(MSG.EMOTE, (data) => room?.game.emote(pid, data));
     socket.on(MSG.INPUT, (data, ack) => {
       room?.game.setInput(pid, data);

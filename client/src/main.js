@@ -86,6 +86,7 @@ function soloBackend() {
       if (msg === MSG.SETTINGS) game.applySettings(id, data);
       if (msg === MSG.START) game.startMatch(id, data);
       if (msg === MSG.REMATCH) game.rematch();
+      if (msg === MSG.PROFILE) game.setProfile(id, data);
       if (msg === MSG.EMOTE) game.emote(id, data);
       if (msg === MSG.INPUT) {
         game.setInput(id, data);
@@ -167,10 +168,15 @@ const ui = createUI({
     if (sample) fx.sound('ding', { volume: 0.8 });
   },
   onFullscreen: toggleFullscreen,
-  onHat: (id) => preview?.setHat(id),
+  onHat: (id) => {
+    preview?.setHat(id);
+    if (lobby && myId) net.emit(MSG.PROFILE, { hat: id });
+  },
   onAnimal: (a) => {
     home.animal = a;
-    showPreview();
+    localStorage.setItem('kota.animal', a);
+    if (lobby && myId && screen !== 'home') net.emit(MSG.PROFILE, { animal: a });
+    else showPreview();
   },
   onName: (name) => {
     home.nickname = name;
@@ -923,6 +929,21 @@ function letterTexture(letter, color) {
   g.lineWidth = 10;
   g.strokeRect(5, 5, 118, 118);
   g.fillStyle = '#ffffff';
+  if (letter === 'shield') {
+    // Escudo: brasão branco com contorno
+    g.beginPath();
+    g.moveTo(64, 18);
+    g.lineTo(104, 32);
+    g.quadraticCurveTo(102, 86, 64, 112);
+    g.quadraticCurveTo(26, 86, 24, 32);
+    g.closePath();
+    g.lineWidth = 8;
+    g.stroke();
+    g.fill();
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    return t;
+  }
   if (letter === '+') {
     // Kit de vida: cruz branca grossa, com contorno, legível de longe
     const cross = () => {
@@ -950,7 +971,7 @@ function letterTexture(letter, color) {
   return t;
 }
 
-const BOX_COLORS = { coffee: '#8d5a3b', bomb: '#e63946', heavy: '#4361ee', soap: '#4cc9f0', heal: '#2a9d5c' };
+const BOX_COLORS = { coffee: '#8d5a3b', bomb: '#e63946', heavy: '#4361ee', soap: '#4cc9f0', heal: '#2a9d5c', shield: '#3a86ff' };
 const boxMaterials = {};
 function boxMesh(type) {
   boxMaterials[type] ||= new THREE.MeshStandardMaterial({ map: letterTexture(POWERUPS.ICON_LETTER[type], BOX_COLORS[type]) });
@@ -1101,6 +1122,16 @@ function frame(now) {
         present.add(sp.id);
         const p = sp.id === myId && sp.st !== ST.OUT && !replaying ? selfPose(sp, now, dt) : sp;
         a.apply(p, animDt);
+        if (sp.id === myId) {
+          const t = (p.charge ?? 0) * CHARGE.TIME;
+          const playing = s.phase === PHASE.PLAYING || s.phase === PHASE.SUDDEN_DEATH;
+          fx.selfAudio({
+            hp: p.hp,
+            charge: t > CHARGE.TAP ? (t - CHARGE.TAP) / (CHARGE.TIME - CHARGE.TAP) : null,
+            alive: playing && !paused && !replaying && !tutorial.active && LIVE.has(p.st),
+            dt,
+          });
+        }
         if (p.st === ST.DASHING && !frozen) fx.trail(sp.id, a.root.position.x, a.root.position.z, colorOf(lobby?.players.find((q) => q.id === sp.id)));
         if (a.pu !== p.pu) {
           a.pu = p.pu;
@@ -1109,6 +1140,7 @@ function frame(now) {
         }
       }
       for (const [id, a] of animals) if (!present.has(id)) a.root.visible = false;
+      if (!present.has(myId)) fx.selfAudio({ alive: false, dt });
       spectateFrame(s, dt, replaying);
       rules.update(s, dt, { animals, colorOf, players: lobbyById() });
       mgView.update(s, dt, { animals, colorOf, players: lobbyById() });
@@ -1119,6 +1151,7 @@ function frame(now) {
       tutorialFrame(dt);
     }
   } else {
+    fx.selfAudio({ alive: false, dt });
     for (const a of animals.values()) a.mixer?.update(dt);
     // Menu: o bicho fica ao lado do painel (em pé, de frente, com o nome em cima)
     const wide = innerWidth > innerHeight * 1.1;

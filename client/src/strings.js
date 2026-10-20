@@ -48,6 +48,7 @@ export const STR = {
     heavy: 'Heavyweight',
     soap: 'Soap Floor',
     heal: 'Health Pack',
+    shield: 'Shield',
   },
 
   powerupIcons: {
@@ -56,6 +57,7 @@ export const STR = {
     heavy: '🏋️',
     soap: '🧼',
     heal: '❤️',
+    shield: '🛡️',
   },
 
   awards: {
@@ -89,6 +91,7 @@ export const STR = {
     'Win matches to earn coins and unlock hats in the Wardrobe.',
     'A ring falls every 15 seconds. Stay near the middle.',
     'Pick up the boxes for power-ups. The green + box heals you.',
+    'The blue Shield blocks the next hit and bounces the attacker back.',
     'Push Bomb sends everyone near you flying.',
     'Last one standing wins the round. First to 3 wins the match.',
     'Beat the King to become the Kingslayer.',
@@ -244,6 +247,7 @@ export const STR = {
   muteHint: 'Press M to mute anytime',
 
   // Guarda-roupa
+  changeAnimal: 'Change animal',
   wardrobe: 'Wardrobe',
   hats: {
     none: 'No hat', party: 'Party hat', cap: 'Cap', flower: 'Flower', tophat: 'Top hat',
@@ -283,4 +287,5 @@ export const STR = {
   jump: 'JUMP',
   controls: [['Space', 'Jump'], ['E', 'Dash (hold to charge)']],
   dazed: 'Dizzy!',
+  blocked: 'Blocked!',
 };

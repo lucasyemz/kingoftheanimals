@@ -22,6 +22,47 @@ const PARTICLE_SCALE = LOW_GFX ? MOBILE.PARTICLE_SCALE : 1;
 const rand = (a, b) => a + Math.random() * (b - a);
 
 // Textura de reserva: bolinha suave desenhada num canvas
+// ---------- Sons sintetizados (Web Audio, saindo pelo mesmo volume/mudo do Howler) ----------
+// Sem arquivo: batimento de vida baixa, passarinhos do tonto e o tom do dash carregado.
+
+function audioOut() {
+  const ctx = Howler.ctx;
+  if (!ctx || ctx.state !== 'running') return null;
+  return { ctx, out: Howler.masterGain ?? ctx.destination };
+}
+
+function tone({ freq, freqTo = freq, dur, type = 'sine', volume = 0.2, delay = 0, attack = 0.005 }) {
+  const a = audioOut();
+  if (!a || settings.muted) return;
+  const { ctx, out } = a;
+  const t0 = ctx.currentTime + delay;
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq, t0);
+  osc.frequency.exponentialRampToValueAtTime(Math.max(1, freqTo), t0 + dur);
+  gain.gain.setValueAtTime(0.0001, t0);
+  gain.gain.exponentialRampToValueAtTime(Math.max(0.0002, volume * settings.sfx), t0 + attack);
+  gain.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+  osc.connect(gain).connect(out);
+  osc.start(t0);
+  osc.stop(t0 + dur + 0.02);
+}
+
+// "Tum-tum" grave
+function heartbeat(volume) {
+  tone({ freq: 70, freqTo: 38, dur: 0.16, volume, attack: 0.01 });
+  tone({ freq: 62, freqTo: 34, dur: 0.15, volume: volume * 0.75, delay: 0.2, attack: 0.01 });
+}
+
+// Passarinhos girando: piados agudos com o tom subindo e descendo
+function birds(volume) {
+  for (let i = 0; i < 6; i++) {
+    const f = 2300 + Math.random() * 700;
+    tone({ freq: f, freqTo: f * (i % 2 ? 0.8 : 1.25), dur: 0.08, volume, delay: i * 0.17 + Math.random() * 0.03 });
+  }
+}
+
 function softDot() {
   const c = document.createElement('canvas');
   c.width = c.height = 64;
@@ -37,6 +78,8 @@ function softDot() {
 }
 
 export function createFx({ world, ui, hooks }) {
+  let chargeOsc = null; // tom do dash carregado (enquanto segura)
+  let beatT = 0;        // próximo batimento de vida baixa
   const batch = new BatchedRenderer();
   world.scene.add(batch);
 
@@ -283,6 +326,7 @@ export function createFx({ world, ui, hooks }) {
         // Dois golpes seguidos: tonto
         sound('pop', { volume: mine ? 0.8 : 0.45, rate: 0.6 });
         animal(target)?.showEmote(STR.dazed, 1.2);
+        birds(isMe(target) ? 0.09 : 0.04);
         burst(x, 1.4, z, { tex: 'star', additive: true, count: 18, life: [0.5, 0.9], speed: [1.5, 3], size: [0.35, 0.6], color: '#ffe066' });
         if (isMe(target)) hooks.vibrate?.([40, 60, 40]);
       }
@@ -444,6 +488,16 @@ export function createFx({ world, ui, hooks }) {
       animal(id)?.squash();
     },
 
+    [EVENT.SHIELD_BLOCK]: ({ id, by, x, z }) => {
+      const mine = isMe(id) || isMe(by);
+      sound('pop', { volume: mine ? 0.8 : 0.45, rate: 1.6 });
+      tone({ freq: 1200, freqTo: 600, dur: 0.18, type: 'triangle', volume: mine ? 0.12 : 0.06 });
+      shockwave(x, z, '#7cc4ff', { size: 2.4, duration: 0.3, opacity: 0.9 });
+      burst(x, 0.8, z, { tex: 'spark', additive: true, count: 16, life: [0.2, 0.45], speed: [3, 6], size: [0.15, 0.3], color: '#9bdcff' });
+      animal(id)?.showEmote(STR.blocked, 0.9);
+      if (mine) world.shakeCamera(FX.SHAKE_HIT);
+    },
+
     [EVENT.HILL_NEXT]: () => {
       sound('beep', { volume: 0.5, rate: 1.3 });
     },
@@ -501,6 +555,44 @@ export function createFx({ world, ui, hooks }) {
     },
     landDust(x, z, y = 0) {
       burst(x, y + 0.1, z, { tex: 'smoke', count: 6, life: [0.25, 0.5], speed: [0.8, 1.8], size: [0.25, 0.45], color: '#e8dcc8', radius: 0.35 });
+    },
+    // Som contínuo do próprio bicho: tom que sobe enquanto carrega o dash e
+    // batimento quando a vida está baixa (mais rápido quanto menos vida)
+    selfAudio({ hp, charge, alive, dt }) {
+      const a = audioOut();
+      // tom de carga
+      const on = alive && charge != null && charge > 0 && a && !settings.muted;
+      if (on && !chargeOsc) {
+        const osc = a.ctx.createOscillator();
+        const gain = a.ctx.createGain();
+        osc.type = 'triangle';
+        gain.gain.value = 0;
+        osc.connect(gain).connect(a.out);
+        osc.start();
+        chargeOsc = { osc, gain };
+      }
+      if (chargeOsc) {
+        const t = chargeOsc.osc.context.currentTime;
+        if (on) {
+          chargeOsc.osc.frequency.setTargetAtTime(220 + 660 * Math.min(1, charge), t, 0.03);
+          chargeOsc.gain.gain.setTargetAtTime(0.05 * settings.sfx, t, 0.03);
+        } else {
+          chargeOsc.gain.gain.setTargetAtTime(0, t, 0.02);
+          const old = chargeOsc;
+          setTimeout(() => old.osc.stop(), 150);
+          chargeOsc = null;
+        }
+      }
+      // batimento
+      if (!alive || hp == null || hp > 30) {
+        beatT = 0;
+        return;
+      }
+      beatT -= dt;
+      if (beatT <= 0) {
+        heartbeat(0.35);
+        beatT = 0.6 + (hp / 30) * 0.45;
+      }
     },
     // Barra do dash cheia (só o próprio bicho): bipe e vibração curta
     chargeFull() {

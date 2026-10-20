@@ -1,7 +1,7 @@
 // HUD, lobby, placar, pódio e emotes. HTML por cima do canvas.
 
 import gsap from 'gsap';
-import { ANIMALS, PLAYER_COLORS, BOTS, ROOM, MATCH, AWARDS, FX, MINIGAMES, FORMATS, HATS } from '../../shared/constants.js';
+import { ANIMALS, PLAYER_COLORS, BOTS, ROOM, MATCH, AWARDS, FX, MINIGAMES, FORMATS, HATS, HEALTH } from '../../shared/constants.js';
 import { PHASE } from '../../shared/messages.js';
 import { STR } from './strings.js';
 import { settings, saveSettings, stats, wallet, equipHat, levelOf, missions } from './settings.js';
@@ -76,6 +76,10 @@ export function createUI(handlers) {
         </div>
         <div class="field-label">${STR.players}</div>
         <ul class="player-list"></ul>
+        <div class="lobby-me">
+          <button class="btn small change-animal">🐾 ${STR.changeAnimal}</button>
+          <button class="btn small lobby-wardrobe">🎩 ${STR.wardrobe}</button>
+        </div>
         <div class="host-controls">
           <div class="setting mode-setting">
             <span class="field-label">${STR.mode}</span>
@@ -186,6 +190,13 @@ export function createUI(handlers) {
         <button class="btn primary close-missions">${STR.close}</button>
       </div>
     </section>
+    <section class="overlay animal-modal" hidden>
+      <div class="panel animal-panel">
+        <strong class="settings-title">${STR.changeAnimal}</strong>
+        <div class="animal-grid lobby-animal-grid"></div>
+        <button class="btn primary close-animal">${STR.close}</button>
+      </div>
+    </section>
     <section class="overlay wardrobe-modal" hidden>
       <div class="panel wardrobe-panel">
         <div class="wardrobe-head"><strong class="settings-title">${STR.wardrobe}</strong><strong class="wallet-coins"></strong></div>
@@ -227,9 +238,31 @@ export function createUI(handlers) {
 
   function selectAnimal(id, fromUser) {
     animal = id;
-    grid.querySelectorAll('.animal').forEach((b) => b.classList.toggle('selected', b.dataset.animal === id));
+    root.querySelectorAll('.btn.animal').forEach((b) => b.classList.toggle('selected', b.dataset.animal === id));
     if (fromUser) handlers.onAnimal?.(id);
   }
+
+  // ---------- Lobby: trocar de bicho e de chapéu sem voltar ao menu ----------
+  const animalEl = $('.animal-modal', root);
+  const lobbyGrid = $('.lobby-animal-grid', root);
+  ANIMALS.forEach((id, i) => {
+    const b = document.createElement('button');
+    b.className = 'btn animal';
+    b.dataset.animal = id;
+    b.textContent = STR.animals[id] ?? id;
+    b.style.setProperty('--c', PLAYER_COLORS[i % PLAYER_COLORS.length]);
+    b.addEventListener('click', () => {
+      selectAnimal(id, true);
+      animalEl.hidden = true;
+    });
+    lobbyGrid.append(b);
+  });
+  $('.change-animal', root).addEventListener('click', () => {
+    selectAnimal(animal, false);
+    animalEl.hidden = false;
+  });
+  $('.close-animal', root).addEventListener('click', () => (animalEl.hidden = true));
+  animalEl.addEventListener('click', (e) => e.target === animalEl && (animalEl.hidden = true));
 
   let linkCode = '';
   const homeData = () => ({ nickname: nickInput.value.trim(), animal });
@@ -355,10 +388,10 @@ export function createUI(handlers) {
       return `<button class="hat-card${on ? ' on' : ''}${poor ? ' poor' : ''}" data-hat="${id}"><span class="hat-icon">${HAT_ICONS[id]}</span><span class="hat-name">${esc(STR.hats[id])}</span><span class="hat-tag">${tag}</span></button>`;
     }).join('');
   }
-  $('.wardrobe-open', root).addEventListener('click', () => {
+  root.querySelectorAll('.wardrobe-open, .lobby-wardrobe').forEach((b) => b.addEventListener('click', () => {
     renderWardrobe();
     wardrobeEl.hidden = false;
-  });
+  }));
   $('.close-wardrobe', root).addEventListener('click', () => {
     wardrobeEl.hidden = true;
     renderStats();
@@ -393,8 +426,17 @@ export function createUI(handlers) {
     screens[name].hidden = !on;
   }
 
+  // Janelas por cima (configurações, guarda-roupa, missões) só fecham quando a tela muda de
+  // verdade; uma atualização do lobby (alguém entrou, trocou de chapéu) não fecha nada.
+  const MODALS = ['settings', 'wardrobe', 'missions'];
   function only(...names) {
-    for (const k of Object.keys(screens)) show(k, names.includes(k));
+    const keys = Object.keys(screens).filter((k) => !MODALS.includes(k));
+    const changes = keys.some((k) => screens[k].hidden === names.includes(k));
+    for (const k of keys) show(k, names.includes(k));
+    if (changes) {
+      for (const k of MODALS) show(k, names.includes(k));
+      $('.animal-modal', root).hidden = true;
+    }
   }
 
   let toastTimer = null;
@@ -483,7 +525,30 @@ export function createUI(handlers) {
       only('hud');
     },
 
+    // Vida de todo mundo no placar (atualiza só o que mudou)
+    scoreHealth(players) {
+      const rows = root.querySelectorAll('.hud-scores .score-row');
+      if (!rows.length) return;
+      const byId = {};
+      for (const p of players) byId[p.id] = p;
+      rows.forEach((row) => {
+        const p = byId[row.dataset.id];
+        const bar = row.querySelector('.row-hp');
+        const hp = p && p.st !== 'out' && p.hp != null ? Math.round(p.hp) : null;
+        if (row.dataset.hp === String(hp)) return;
+        row.dataset.hp = String(hp);
+        bar.hidden = hp == null;
+        if (hp == null) return;
+        const f = hp / HEALTH.MAX;
+        const fill = bar.firstChild;
+        fill.style.width = `${f * 100}%`;
+        fill.style.background = `hsl(${Math.round(f * 120)} 80% 50%)`;
+        bar.classList.toggle('low', f <= 0.3);
+      });
+    },
+
     hud(state, lobby, myId) {
+      this.scoreHealth(state.players);
       const mg = lobby?.roundMode && lobby.roundMode !== 'classic' ? ` · ${STR.modes[lobby.roundMode]}` : '';
       $('.hud-round', root).textContent = `${STR.round(state.round)}${mg}`;
       $('.hud-scenario', root).textContent = STR.scenarios[lobby?.scenario] ?? '';
@@ -504,7 +569,7 @@ export function createUI(handlers) {
           const n = wins[p.id] ?? p.wins ?? 0;
           const pips = Array.from({ length: MATCH.WINS_TO_WIN }, (_, i) => `<i class="${i < n ? 'on' : ''}"></i>`).join('');
           const crown = p.id === lobby.kingId ? '👑' : '';
-          return `<div class="score-row${p.eliminated ? ' out' : ''}"><span class="dot" style="background:${colorOf(p)}"></span><span class="name outlined">${crown}${esc(displayName(p))}</span><span class="pips" style="--c:${colorOf(p)}">${pips}</span></div>`;
+          return `<div class="score-row${p.eliminated ? ' out' : ''}" data-id="${esc(p.id)}"><span class="dot" style="background:${colorOf(p)}"></span><span class="name outlined">${crown}${esc(displayName(p))}</span><span class="row-hp" hidden><i></i></span><span class="pips" style="--c:${colorOf(p)}">${pips}</span></div>`;
         })
         .join('');
     },

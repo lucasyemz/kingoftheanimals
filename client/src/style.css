@@ -410,6 +410,29 @@ input:focus {
   margin: 0;
 }
 
+.row-hp {
+  width: 52px;
+  height: 8px;
+  border-radius: 4px;
+  background: rgb(0 0 0 / 0.5);
+  border: 2px solid var(--ink);
+  overflow: hidden;
+}
+
+.row-hp[hidden] {
+  display: none;
+}
+
+.row-hp i {
+  display: block;
+  height: 100%;
+  transition: width 0.15s ease-out;
+}
+
+.row-hp.low {
+  border-color: #ff2a2a;
+}
+
 .pips {
   display: inline-flex;
   gap: 3px;
@@ -1782,6 +1805,24 @@ body.replaying .hud-feed {
 }
 
 /* ---------- Guarda-roupa ---------- */
+
+#ui .animal-modal {
+  background: rgb(29 27 47 / 0.45);
+  pointer-events: auto;
+  z-index: 10;
+}
+
+.animal-panel {
+  width: min(420px, 100%);
+  display: grid;
+  gap: 12px;
+}
+
+.lobby-me {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
 
 #ui .wardrobe-modal {
   background: rgb(29 27 47 / 0.45);
