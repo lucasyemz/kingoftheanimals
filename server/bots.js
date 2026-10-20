@@ -2,7 +2,7 @@
 // Prioridade (GDD): fugir da borda → pegar power-up → caçar → dar dash.
 // O tempo de reação é um atraso entre decidir e aplicar o input.
 
-import { PHYSICS, ARENA, BOTS, HILL } from '../shared/constants.js';
+import { PHYSICS, ARENA, BOTS, HILL, HEALTH } from '../shared/constants.js';
 import { PHASE, PLAYER_STATE as ST } from '../shared/messages.js';
 import { timeToBar, hexIntact } from './minigames.js';
 import { HEX_TILES } from '../shared/hexgrid.js';
@@ -248,7 +248,11 @@ function decide(game, p, cfg, brain, now) {
   for (const b of game.powerups) {
     const dMe = Math.hypot(b.x - p.x, b.z - p.z);
     const dOther = Math.min(Infinity, ...others.map((q) => Math.hypot(b.x - q.x, b.z - q.z)));
-    if (dMe >= dOther) continue;
+    // Kit de vida: com vida cheia não vale a viagem; com pouca, corre mesmo se alguém estiver mais perto
+    const hurt = 1 - (p.hp ?? HEALTH.MAX) / HEALTH.MAX;
+    if (b.type === 'heal' && hurt < 0.25) continue;
+    const reach = b.type === 'heal' ? 1 + hurt * cfg.positionChance : 1;
+    if (dMe >= dOther * reach) continue;
     if (!brain.ignored.has(b.pid)) brain.ignored.set(b.pid, rng() < cfg.ignorePowerup);
     if (brain.ignored.get(b.pid)) continue;
     if (dMe < boxDist) {

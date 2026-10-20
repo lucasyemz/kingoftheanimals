@@ -334,11 +334,17 @@ export function createFx({ world, ui, hooks }) {
       burst(x, 0.4, z, { tex: 'spark', additive: true, count: 14, life: [0.6, 1.2], speed: [0.2, 0.8], size: [0.15, 0.3], color: '#fff3a0', lift: 3, radius: 0.4 });
     },
 
-    [EVENT.POWERUP_PICK]: ({ id, pu }) => {
-      sound('ding', { volume: isMe(id) ? 0.9 : 0.5 });
+    [EVENT.POWERUP_PICK]: ({ id, pu, healed }) => {
+      sound('ding', { volume: isMe(id) ? 0.9 : 0.5, rate: pu === 'heal' ? 1.25 : 1 });
       const a = animal(id);
       if (!a) return;
       a.hop();
+      if (pu === 'heal') {
+        // Kit de vida: brilhos verdes subindo e o quanto curou
+        const { x, z } = a.root.position;
+        burst(x, 0.6, z, { tex: 'spark', additive: true, count: 18, life: [0.6, 1.1], speed: [0.3, 1], size: [0.2, 0.4], color: '#5cff9d', lift: 3, radius: 0.5 });
+        a.showEmote(`+${healed ?? 0} ❤️`, 1.1);
+      }
       ui.powerupToast?.(id, pu);
     },
 

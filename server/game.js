@@ -570,6 +570,12 @@ export class Game {
 
   pickPowerup(p, box) {
     const cfg = POWERUPS.TYPES[box.type];
+    if (box.type === 'heal') {
+      const before = p.hp ?? HEALTH.MAX;
+      p.hp = Math.min(HEALTH.MAX, before + cfg.amount);
+      this.event(EVENT.POWERUP_PICK, { id: p.id, pid: box.pid, pu: box.type, healed: Math.round(p.hp - before) });
+      return;
+    }
     // GDD: um por vez; pegar outro substitui. Bomb e Soap ficam como ícone enquanto valem.
     p.pu = box.type;
     p.puT = cfg.duration || 1;

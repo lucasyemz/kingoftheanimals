@@ -263,8 +263,9 @@ export const POWERUPS = {
     bomb:   { weight: 25, duration: 0, radius: 3, impulse: 14, stun: 0.3 },     // impulse definido; conta como derrubada
     heavy:  { weight: 20, duration: 6, scale: 1.5, pushTakenMult: 0.25 },       // raio de colisão também × 1,5; pushTakenMult definido
     soap:   { weight: 20, duration: 6, friction: 0.97 },                        // vale para todos; GDD: "chão escorregadio usa 0,97"
+    heal:   { weight: 25, duration: 0, amount: 40 },                            // Kit de vida: +40 na hora; não troca o power-up que ele já tem
   },
-  ICON_LETTER: { coffee: 'C', bomb: 'B', heavy: 'H', soap: 'S' }, // placeholder: cubo com a letra
+  ICON_LETTER: { coffee: 'C', bomb: 'B', heavy: 'H', soap: 'S', heal: '+' }, // placeholder: cubo com a letra
 };
 
 // ---------- Bots (GDD: tabela de Bots) ----------

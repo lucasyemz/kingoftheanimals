@@ -47,6 +47,7 @@ export const STR = {
     bomb: 'Push Bomb',
     heavy: 'Heavyweight',
     soap: 'Soap Floor',
+    heal: 'Health Pack',
   },
 
   powerupIcons: {
@@ -54,6 +55,7 @@ export const STR = {
     bomb: '💣',
     heavy: '🏋️',
     soap: '🧼',
+    heal: '❤️',
   },
 
   awards: {
@@ -85,7 +87,7 @@ export const STR = {
     'Party mode picks a different minigame every round.',
     'Win matches to earn coins and unlock hats in the Wardrobe.',
     'A ring falls every 15 seconds. Stay near the middle.',
-    'Pick up the boxes for power-ups.',
+    'Pick up the boxes for power-ups. The green + box heals you.',
     'Push Bomb sends everyone near you flying.',
     'Last one standing wins the round. First to 3 wins the match.',
     'Beat the King to become the Kingslayer.',

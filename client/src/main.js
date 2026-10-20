@@ -858,6 +858,22 @@ function letterTexture(letter, color) {
   g.lineWidth = 10;
   g.strokeRect(5, 5, 118, 118);
   g.fillStyle = '#ffffff';
+  if (letter === '+') {
+    // Kit de vida: cruz branca grossa, com contorno, legível de longe
+    const cross = () => {
+      g.beginPath();
+      g.rect(48, 20, 32, 88);
+      g.rect(20, 48, 88, 32);
+    };
+    g.lineWidth = 8;
+    cross();
+    g.stroke();
+    g.fillRect(48, 20, 32, 88);
+    g.fillRect(20, 48, 88, 32);
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    return t;
+  }
   g.font = '700 84px Fredoka, sans-serif';
   g.textAlign = 'center';
   g.textBaseline = 'middle';
@@ -869,7 +885,7 @@ function letterTexture(letter, color) {
   return t;
 }
 
-const BOX_COLORS = { coffee: '#8d5a3b', bomb: '#e63946', heavy: '#4361ee', soap: '#4cc9f0' };
+const BOX_COLORS = { coffee: '#8d5a3b', bomb: '#e63946', heavy: '#4361ee', soap: '#4cc9f0', heal: '#2a9d5c' };
 const boxMaterials = {};
 function boxMesh(type) {
   boxMaterials[type] ||= new THREE.MeshStandardMaterial({ map: letterTexture(POWERUPS.ICON_LETTER[type], BOX_COLORS[type]) });
