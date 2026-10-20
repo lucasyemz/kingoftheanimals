@@ -10,14 +10,17 @@ const KEYS = {
   down: ['KeyS', 'ArrowDown'],
   left: ['KeyA', 'ArrowLeft'],
   right: ['KeyD', 'ArrowRight'],
-  dash: ['Space'],
+  jump: ['Space'],
+  dash: ['ShiftLeft', 'ShiftRight', 'KeyK', 'KeyJ'],
 };
 const EMOTE_KEYS = ['Digit1', 'Digit2', 'Digit3', 'Digit4'];
 const PAD_DEAD_ZONE = 0.2;
 
-export function createInput({ onEmote, onDash, touchRoot }) {
+export function createInput({ onEmote, onDash, onJump, touchRoot }) {
   const down = new Set();
   let dashQueued = false;
+  let jumpQueued = false;
+  let padJumpWas = false;
   let stick = { x: 0, z: 0 };
   let padDashWas = false;
   let padEmoteWas = [false, false, false, false];
@@ -32,6 +35,13 @@ export function createInput({ onEmote, onDash, touchRoot }) {
       if (!e.repeat && enabled) {
         dashQueued = true;
         onDash?.();
+      }
+    }
+    if (KEYS.jump.includes(e.code)) {
+      e.preventDefault();
+      if (!e.repeat && enabled) {
+        jumpQueued = true;
+        onJump?.();
       }
     }
     const emote = EMOTE_KEYS.indexOf(e.code);
@@ -73,6 +83,14 @@ export function createInput({ onEmote, onDash, touchRoot }) {
       dashQueued = true;
       onDash?.();
     }, { passive: false });
+    const jumpBtn = touchRoot.querySelector('.jump-btn');
+    jumpBtn.textContent = STR.jump;
+    jumpBtn.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      if (!enabled) return;
+      jumpQueued = true;
+      onJump?.();
+    }, { passive: false });
 
     const emoteBar = touchRoot.querySelector('.emote-bar');
     for (let i = 0; i < EMOTES.COUNT; i++) {
@@ -97,12 +115,19 @@ export function createInput({ onEmote, onDash, touchRoot }) {
     let x = pad.axes[0] ?? 0;
     let z = pad.axes[1] ?? 0;
     if (Math.hypot(x, z) < PAD_DEAD_ZONE) x = z = 0;
-    const dash = !!(pad.buttons[0]?.pressed || pad.buttons[2]?.pressed);
+    // A pula; X, B ou RB dão dash
+    const dash = !!(pad.buttons[2]?.pressed || pad.buttons[1]?.pressed || pad.buttons[5]?.pressed);
     if (dash && !padDashWas && enabled) {
       dashQueued = true;
       onDash?.();
     }
     padDashWas = dash;
+    const jump = !!pad.buttons[0]?.pressed;
+    if (jump && !padJumpWas && enabled) {
+      jumpQueued = true;
+      onJump?.();
+    }
+    padJumpWas = jump;
     // direcional: emotes 1-4 (cima, direita, baixo, esquerda)
     const dpad = [12, 15, 13, 14].map((b) => !!pad.buttons[b]?.pressed);
     dpad.forEach((p, i) => {
@@ -115,9 +140,9 @@ export function createInput({ onEmote, onDash, touchRoot }) {
   return {
     setEnabled(on) {
       enabled = on;
-      if (!on) dashQueued = false;
+      if (!on) dashQueued = jumpQueued = false;
     },
-    // Chamado a cada envio de input; o dash é consumido aqui.
+    // Chamado a cada envio de input; dash e pulo são consumidos aqui.
     read() {
       let x = (held('right') ? 1 : 0) - (held('left') ? 1 : 0);
       let z = (held('down') ? 1 : 0) - (held('up') ? 1 : 0);
@@ -130,8 +155,9 @@ export function createInput({ onEmote, onDash, touchRoot }) {
         z /= len;
       }
       const dash = dashQueued && enabled;
-      dashQueued = false;
-      return { x: enabled ? x : 0, z: enabled ? z : 0, dash };
+      const jump = jumpQueued && enabled;
+      dashQueued = jumpQueued = false;
+      return { x: enabled ? x : 0, z: enabled ? z : 0, dash, jump };
     },
     isTouch: () => !!touch,
   };

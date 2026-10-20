@@ -74,6 +74,15 @@ export const PHYSICS = {
   KO_CREDIT_WINDOW: 3,        // GDD: último que encostou nos 3 s antes da queda leva o crédito
   DEAD_ZONE: 0.15,            // definido: input menor que isso conta como parado
   DASH_BUFFER: 0.1,           // definido: dash apertado um pouco antes da recarga ainda vale
+  // Pulo (definido): ~0,6 s no ar e ~1,1 m de altura. No ar o controle é menor e o
+  // embalo se mantém; dá para pular por cima de outro bicho, da barra de neon e de
+  // buraco no gelo. Só cai da arena quando aterrissa fora dela.
+  JUMP_SPEED: 7.2,
+  GRAVITY: 24,
+  AIR_CONTROL: 0.45,          // aceleração no ar = 45 % da do chão
+  AIR_FRICTION: 0.985,        // atrito por tick no ar (quase nenhum)
+  JUMP_BUFFER: 0.12,          // pulo apertado um pouco antes de aterrissar ainda vale
+  JUMP_OVER: 0.75,            // diferença de altura acima da qual dois bichos não se tocam
   // definido: o impulso da colisão é dividido entre os dois bichos pelo "quanto
   // aceita ser empurrado" (1 normal, 0,25 Heavyweight). Dois iguais: metade cada.
 };
@@ -188,10 +197,10 @@ export const BOTS = {
   DODGE_ANGLE_DEG: 25,        // definido: e apontado para ele
   NAME_ADJECTIVE_COUNT: 12,   // strings.botAdjectives precisa ter 12 itens ("Brakeless", "Turbo"...)
   DIFFICULTY: {
-    //               reação  mira±  borda  ignora PU  posiciona  desvia
-    easy:   { reactionMs: 600, aimErrorDeg: 35, edgeSense: 1.5, ignorePowerup: 0.6, positionChance: 0,   dodgeChance: 0 },
-    medium: { reactionMs: 300, aimErrorDeg: 15, edgeSense: 3,   ignorePowerup: 0.3, positionChance: 0.5, dodgeChance: 0.3 },
-    hard:   { reactionMs: 120, aimErrorDeg: 5,  edgeSense: 3.5, ignorePowerup: 0,   positionChance: 1,   dodgeChance: 0.7 },
+    //               reação  mira±  borda  ignora PU  posiciona  desvia  pula na hora certa (barra, dash, bomba)
+    easy:   { reactionMs: 600, aimErrorDeg: 35, edgeSense: 1.5, ignorePowerup: 0.6, positionChance: 0,   dodgeChance: 0,   jumpSkill: 0.25 },
+    medium: { reactionMs: 300, aimErrorDeg: 15, edgeSense: 3,   ignorePowerup: 0.3, positionChance: 0.5, dodgeChance: 0.3, jumpSkill: 0.6 },
+    hard:   { reactionMs: 120, aimErrorDeg: 5,  edgeSense: 3.5, ignorePowerup: 0,   positionChance: 1,   dodgeChance: 0.7, jumpSkill: 0.9 },
   },
 };
 
@@ -298,7 +307,7 @@ export const SCENARIOS = {
     particles: 'stars',
     bloom: true,
     // Barra de neon girando a partir do meio: empurra quem estiver no caminho
-    hazard: { type: 'sweeper', speed: 0.75, hub: 0.55, width: 0.3, push: 8, startAt: 3 },
+    hazard: { type: 'sweeper', speed: 0.75, hub: 0.55, width: 0.3, push: 8, startAt: 3, height: 0.4 }, // height: acima disso o pulo passa por cima
   },
 };
 

@@ -221,7 +221,7 @@ export function createRules(world) {
       const holder = pot && animals.get(pot.id);
       bomb.visible = !!holder && holder.root.visible;
       if (bomb.visible) {
-        bomb.position.set(holder.root.position.x, holder.root.position.y + holder.headY + 1.75, holder.root.position.z);
+        bomb.position.set(holder.root.position.x, holder.lift.position.y + holder.headY + 1.75, holder.root.position.z);
         const rate = pot.fuse < 3 ? 60 : pot.fuse < 6 ? 140 : 280;
         const blink = Math.sin(performance.now() / rate) > 0;
         bombBody.material.emissiveIntensity = blink ? 0.9 : 0;

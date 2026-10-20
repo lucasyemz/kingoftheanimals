@@ -120,6 +120,7 @@ function updateSweeper(game, h, dt) {
       p.z *= k;
     }
     if (along < 0 || along > game.arena.radius + rad) continue;
+    if (p.y > (h.height ?? 0.4)) continue; // pulou por cima da barra
     const side = p.x * nx + p.z * nz;
     const reach = h.width + rad;
     if (Math.abs(side) >= reach) continue;

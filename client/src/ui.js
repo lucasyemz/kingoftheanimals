@@ -107,7 +107,7 @@ export function createUI(handlers) {
       <div class="hud-left outlined"><div class="hud-round"></div><div class="hud-scenario"></div></div>
       <div class="hud-timer outlined"></div>
       <div class="hud-scores"></div>
-      <div class="hud-emotes">${STR.emotes.map((e, i) => `<span><kbd>${i + 1}</kbd>${esc(e)}</span>`).join('')}</div>
+      <div class="hud-emotes">${STR.controls.map(([k, v]) => `<span class="ctl"><kbd>${k}</kbd>${v}</span>`).join('')}${STR.emotes.map((e, i) => `<span><kbd>${i + 1}</kbd>${esc(e)}</span>`).join('')}</div>
       <div class="hud-spectating outlined" hidden>${STR.spectating}</div>
       <ul class="hud-feed"></ul>
       <div class="hud-objective outlined" hidden></div>

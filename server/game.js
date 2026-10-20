@@ -34,8 +34,10 @@ function sanitizeDebug(d = {}) {
 
 // Um passo de movimento de um bicho, sem colisão: timers, input, dash, atrito.
 // É a mesma função que o cliente usa para prever o próprio bicho (sem esperar o servidor).
-export function movePlayer(p, dt, { control, friction, onDash }) {
+export function movePlayer(p, dt, { control, friction, onDash, onJump }) {
   p.stT -= dt;
+  p.jumpBuffer = Math.max(0, (p.jumpBuffer ?? 0) - dt);
+  const airborne = p.y > 0;
   if ((p.st === ST.DASHING || p.st === ST.STUNNED) && p.stT <= 0) p.st = ST.ALIVE;
   p.dashCd = Math.max(0, p.dashCd - dt);
   p.dashBuffer = Math.max(0, p.dashBuffer - dt);
@@ -57,7 +59,7 @@ export function movePlayer(p, dt, { control, friction, onDash }) {
       iz /= len;
     }
     if (ix || iz) {
-      const mult = (coffee ? coffee.speedMult : 1) * (p.potato ? POTATO.HOLDER_SPEED : 1);
+      const mult = (coffee ? coffee.speedMult : 1) * (p.potato ? POTATO.HOLDER_SPEED : 1) * (airborne ? PHYSICS.AIR_CONTROL : 1);
       const maxSpeed = PHYSICS.MAX_SPEED * mult;
       const before = Math.hypot(p.vx, p.vz);
       p.vx += ix * PHYSICS.ACCEL * mult * dt;
@@ -85,15 +87,30 @@ export function movePlayer(p, dt, { control, friction, onDash }) {
       p.dashBuffer = 0;
       onDash?.(dx / dl, dz / dl);
     }
+    if (p.jumpBuffer > 0 && !airborne && p.st === ST.ALIVE) {
+      p.vy = PHYSICS.JUMP_SPEED;
+      p.y = 1e-3;
+      p.jumpBuffer = 0;
+      onJump?.();
+    }
   }
 
   if (p.st !== ST.DASHING) {
-    const f = Math.pow(friction, dt / NET.TICK_DT);
+    const f = Math.pow(p.y > 0 ? PHYSICS.AIR_FRICTION : friction, dt / NET.TICK_DT);
     p.vx *= f;
     p.vz *= f;
   }
   p.x += p.vx * dt;
   p.z += p.vz * dt;
+  // Altura: sobe e desce com gravidade, em qualquer estado (atordoado no ar também cai)
+  if (p.y > 0 || p.vy > 0) {
+    p.vy -= PHYSICS.GRAVITY * dt;
+    p.y += p.vy * dt;
+    if (p.y <= 0) {
+      p.y = 0;
+      p.vy = 0;
+    }
+  }
 }
 
 export class Game {
@@ -155,7 +172,7 @@ export class Game {
       // partida
       wins: 0, kos: 0, selfKos: 0, aliveTime: 0,
       // rodada
-      x: 0, z: 0, vx: 0, vz: 0, dir: 0,
+      x: 0, z: 0, vx: 0, vz: 0, dir: 0, y: 0, vy: 0, jumpBuffer: 0,
       st: ST.OUT, stT: 0,
       dashCd: 0, dashCdMax: PHYSICS.DASH_COOLDOWN, dashBuffer: 0, dashCount: 0,
       inputX: 0, inputZ: 0, inputSeq: 0, ackSeq: 0,
@@ -329,7 +346,7 @@ export class Game {
       Object.assign(p, {
         x: Math.cos(a) * ARENA.SPAWN_RADIUS,
         z: Math.sin(a) * ARENA.SPAWN_RADIUS,
-        vx: 0, vz: 0,
+        vx: 0, vz: 0, y: 0, vy: 0, jumpBuffer: 0,
         dir: Math.atan2(-Math.cos(a), -Math.sin(a)), // virado para o centro
         st: ST.ALIVE, stT: 0,
         dashCd: 0, dashBuffer: 0,
@@ -545,13 +562,14 @@ export class Game {
 
   // ---------- Física ----------
 
-  setInput(id, { x, z, dash, seq } = {}) {
+  setInput(id, { x, z, dash, jump, seq } = {}) {
     const p = this.players.get(id);
     if (!p || p.bot) return;
     p.inputX = clamp(num(x), -1, 1);
     p.inputZ = clamp(num(z), -1, 1);
     p.inputSeq = Math.max(p.inputSeq ?? 0, Math.floor(num(seq)));
     if (dash) p.dashBuffer = PHYSICS.DASH_BUFFER;
+    if (jump) p.jumpBuffer = PHYSICS.JUMP_BUFFER;
   }
 
   physics(dt, control) {
@@ -581,6 +599,7 @@ export class Game {
           p.dashCount += 1;
           this.event(EVENT.DASH, { id: p.id, dx: r2(dx), dz: r2(dz) });
         },
+        onJump: () => this.event(EVENT.JUMP, { id: p.id }),
       });
     }
 
@@ -597,6 +616,7 @@ export class Game {
         let d = Math.hypot(dx, dz);
         const min = this.radiusOf(a) + this.radiusOf(b);
         if (d >= min) continue;
+        if (Math.abs((a.y ?? 0) - (b.y ?? 0)) > PHYSICS.JUMP_OVER) continue; // um passou por cima do outro
         if (d < 1e-4) {
           dx = 1;
           dz = 0;
@@ -652,7 +672,7 @@ export class Game {
   checkFalls(afterRound = false) {
     this.fellThisTick = [];
     for (const p of this.participants) {
-      if (!isStanding(p)) continue;
+      if (!isStanding(p) || p.y > 0) continue; // no ar ainda não caiu: só se aterrissar fora
       const r = Math.hypot(p.x, p.z);
       if (r <= this.arena.radius) {
         if (inOpenHole(this, p)) this.fall(p, r, afterRound, 'hole');
@@ -824,7 +844,7 @@ export class Game {
     for (const p of [me, dummy]) {
       if (!p || p.st !== ST.OUT) continue;
       const home = p === me ? { x: 0, z: 3 } : { x: 0, z: -3.5 };
-      Object.assign(p, { ...home, vx: 0, vz: 0, st: ST.ALIVE, stT: 0, lastToucher: null });
+      Object.assign(p, { ...home, vx: 0, vz: 0, y: 0, vy: 0, st: ST.ALIVE, stT: 0, lastToucher: null });
     }
   }
 
@@ -899,6 +919,8 @@ export class Game {
         vx: r2(p.vx),
         vz: r2(p.vz),
         dir: r2(p.dir),
+        y: r2(p.y),
+        vy: r2(p.vy),
         st: p.st,
         dashCd: p.dashCdMax ? r2(p.dashCd / p.dashCdMax) : 0,
         dashCdMax: r2(p.dashCdMax),

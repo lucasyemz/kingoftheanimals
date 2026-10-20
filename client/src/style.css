@@ -1448,3 +1448,43 @@ body.tutorial .hud-emotes {
     grid-template-columns: 1fr;
   }
 }
+
+/* Botão de pulo (celular): acima e à esquerda do DASH */
+#touch .jump-btn {
+  position: fixed;
+  right: calc(max(24px, env(safe-area-inset-right)) + 118px);
+  bottom: 22px;
+  width: 92px;
+  height: 92px;
+  border-radius: 50%;
+  font: 700 19px 'Fredoka', sans-serif;
+  color: var(--ink);
+  background: #f9c74f;
+  border: 4px solid var(--ink);
+  box-shadow: 0 5px 0 var(--ink);
+}
+
+#touch .jump-btn:active {
+  transform: translateY(3px);
+  box-shadow: 0 2px 0 var(--ink);
+}
+
+.hud-emotes .ctl {
+  color: #ffe08a;
+}
+
+.hud-emotes .ctl + span:not(.ctl) {
+  margin-left: 10px;
+}
+
+/* Celular: emotes embaixo, no meio (em cima ficam o relógio, a bomba e a colina) */
+#touch .emote-bar {
+  top: auto;
+  bottom: max(10px, env(safe-area-inset-bottom));
+}
+
+#touch .emote-btn {
+  min-height: 40px;
+  font-size: 13px;
+  opacity: 0.9;
+}

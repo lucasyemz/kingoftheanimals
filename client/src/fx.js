@@ -258,6 +258,11 @@ export function createFx({ world, ui, hooks }) {
       burst(x, 0.2, z, { tex: 'smoke', count: 10, life: [0.3, 0.6], speed: [0.5, 1.5], size: [0.25, 0.5], color: '#d9c7a7' });
     },
 
+    [EVENT.JUMP]: ({ id }) => {
+      if (hooks.wasLocalJump(id)) return; // o próprio pulo já tocou na hora
+      sound('pop', { volume: 0.25, rate: rand(1.5, 1.8) });
+    },
+
     [EVENT.DASH_HIT]: ({ id, target, x, z }) => {
       const mine = isMe(id) || isMe(target);
       sound('boing', { rate: rand(...FX.BOING_RATE), volume: 0.9 });
@@ -426,6 +431,12 @@ export function createFx({ world, ui, hooks }) {
 
   return {
     load, handle, update, sound, playMusic, setAmbient, burst, trail, applyVolume,
+    localJump() {
+      sound('pop', { volume: 0.45, rate: rand(1.5, 1.8) });
+    },
+    landDust(x, z) {
+      burst(x, 0.1, z, { tex: 'smoke', count: 6, life: [0.25, 0.5], speed: [0.8, 1.8], size: [0.25, 0.45], color: '#e8dcc8', radius: 0.35 });
+    },
     localDash(a) {
       sound('whoosh', { volume: 0.6, rate: rand(0.9, 1.15) });
       a.dashStretch();

@@ -146,8 +146,12 @@ export class Animal {
     this.type = type;
     this.color = new THREE.Color(color);
     this.root = new THREE.Group();   // posição no chão e rumo
+    this.lift = new THREE.Group();   // altura do pulo (o disco e o anel ficam no chão)
     this.body = new THREE.Group();   // achatar/esticar, giro da queda
-    this.root.add(this.body);
+    this.root.add(this.lift);
+    this.lift.add(this.body);
+    this.airY = 0;
+    this.onLand = null;              // main.js põe a poeira da aterrissagem aqui
     this.state = ST.ALIVE;
     this.anim = null;
     this.baseScale = 1;
@@ -211,25 +215,25 @@ export class Animal {
     }
     this.stars.position.y = this.headY + 0.25;
     this.stars.visible = false;
-    this.root.add(this.stars);
+    this.lift.add(this.stars);
 
     // Etiquetas HTML sobre a cabeça: nome, ícone do power-up, balão do emote
     this.labelEl = makeLabel('animal-label');
     this.label = new CSS2DObject(this.labelEl);
     this.label.position.y = this.headY + 0.55;
-    this.root.add(this.label);
+    this.lift.add(this.label);
 
     this.iconEl = makeLabel('animal-icon');
     this.icon = new CSS2DObject(this.iconEl);
     this.icon.position.y = this.headY + 1.05;
     this.icon.visible = false;
-    this.root.add(this.icon);
+    this.lift.add(this.icon);
 
     this.bubbleEl = makeLabel('emote-bubble');
     this.bubble = new CSS2DObject(this.bubbleEl);
     this.bubble.position.y = this.headY + 1.15;
     this.bubble.visible = false;
-    this.root.add(this.bubble);
+    this.lift.add(this.bubble);
 
     this.play('idle');
   }
@@ -263,6 +267,14 @@ export class Animal {
   apply(p, dt) {
     this.root.position.set(p.x, 0, p.z);
     this.root.rotation.y = p.dir;
+    // Pulo: o bicho sobe; a sombra (disco) fica no chão e diminui com a altura
+    const y = p.st === ST.FALLING || p.st === ST.OUT ? 0 : Math.max(0, p.y ?? 0);
+    if (this.airY <= 0 && y > 0.05) this.jumpStretch();
+    if (this.airY > 0.05 && y <= 0) this.land();
+    this.airY = y;
+    this.lift.position.y = y;
+    const shadow = 1 / (1 + y * 0.6);
+    this.disc.scale.set(shadow, 1, shadow);
     const fraction = Math.max(0, Math.min(1, p.dashCd));
     this.ring.geometry.setDrawRange(0, Math.round((1 - fraction) * RING_SEGMENTS) * 6);
     this.ring.material.opacity = fraction > 0 ? 0.45 : 0.95;
@@ -314,6 +326,19 @@ export class Animal {
     );
   }
 
+  // Estica para cima na hora do pulo
+  jumpStretch() {
+    gsap.killTweensOf(this.body.scale);
+    gsap.fromTo(this.body.scale, { x: 0.82, y: 1.25, z: 0.82 }, { x: 1, y: 1, z: 1, duration: 0.35, ease: 'power2.out' });
+  }
+
+  // Achata um pouco ao aterrissar
+  land() {
+    gsap.killTweensOf(this.body.scale);
+    gsap.fromTo(this.body.scale, { x: 1.18, y: 0.8, z: 1.18 }, { x: 1, y: 1, z: 1, duration: 0.35, ease: 'elastic.out(1.1, 0.45)' });
+    this.onLand?.(this.root.position.x, this.root.position.z);
+  }
+
   hop() {
     gsap.fromTo(this.body.position, { y: 0 }, { y: 0.6, duration: 0.18, yoyo: true, repeat: 1, ease: 'power2.out' });
   }
@@ -343,6 +368,9 @@ export class Animal {
     this.body.scale.set(1, 1, 1);
     this.body.rotation.set(0, 0, 0);
     this.body.position.set(0, 0, 0);
+    this.lift.position.y = 0;
+    this.airY = 0;
+    this.disc.scale.set(1, 1, 1);
     this.label.visible = true;
     this.disc.visible = true;
     this.ring.visible = true;

@@ -9,7 +9,7 @@ export const MSG = {
                         //   debug = atalhos da URL de quem cria a sala (scenario, round, powerup, slowmo, nofall)
                         //   ack(res): { ok: true, playerId, code } | { ok: false, error: JOIN_ERROR.* }
   START: 'start',       // { bots: 0..7, difficulty: 'easy' | 'medium' | 'hard' }   só o anfitrião
-  INPUT: 'input',       // { x, z, dash: bool, seq }   x/z em -1..1, 30 por segundo
+  INPUT: 'input',       // { x, z, dash: bool, jump: bool, seq }   x/z em -1..1, 30 por segundo
                         //   ack opcional (1 por segundo) devolve o tempo do servidor: é o ping do ?debug=1
   EMOTE: 'emote',       // { n: 1..4 }
 
@@ -69,6 +69,7 @@ export const EVENT = {
   POTATO: 'potato',                // { id, from: id | null, fuse }   a bomba da Batata quente foi para id
   POTATO_BOOM: 'potatoBoom',       // { id, x, z, hit: [id] }   a bomba explodiu em id
   TUTORIAL: 'tutorial',            // { step: 'done' }   o boneco do tutorial caiu
+  JUMP: 'jump',                    // { id }   pulou (som e poeira)
 };
 
 // Erros do ack de `join`.

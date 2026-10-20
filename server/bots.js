@@ -30,12 +30,41 @@ export function botThink(game, p, now) {
     p.inputX = d.x;
     p.inputZ = d.z;
     if (d.dash) p.dashBuffer = PHYSICS.DASH_BUFFER;
+    if (d.jump) p.jumpBuffer = PHYSICS.JUMP_BUFFER;
   }
   if (now < brain.nextThink) return;
   brain.nextThink = now + BOTS.THINK_INTERVAL;
   const cfg = BOTS.DIFFICULTY[brain.difficulty] ?? BOTS.DIFFICULTY.medium;
   const d = decide(game, p, cfg, brain, now);
+  d.jump = !d.dash && wantsJump(game, p, cfg, brain);
   brain.queue.push({ at: now + cfg.reactionMs / 1000, ...d });
+}
+
+// Pular: por cima da barra de neon que vem vindo, de um dash na direção dele,
+// de quem está com a bomba, e de vez em quando só por diversão.
+function wantsJump(game, p, cfg, brain) {
+  if (p.y > 0 || p.st !== ST.ALIVE) return false;
+  const rng = brain.rng;
+  const react = cfg.reactionMs / 1000;
+  const h = game.hazard;
+  if (game.sweep && h?.type === 'sweeper' && game.sweep.t >= h.startAt) {
+    const r = Math.hypot(p.x, p.z);
+    if (r > h.hub + 0.4) {
+      const ahead = (((Math.atan2(p.z, p.x) - game.sweep.angle) % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+      const tHit = ahead / h.speed - (PHYSICS.ANIMAL_RADIUS + h.width) / (h.speed * r);
+      if (tHit > react && tHit < react + 0.2) return rng() < cfg.jumpSkill;
+    }
+  }
+  for (const q of game.participants) {
+    if (q === p || !standing(q)) continue;
+    const d = Math.hypot(q.x - p.x, q.z - p.z);
+    if (q.st === ST.DASHING && d < 3) {
+      const v = unit(q.vx, q.vz);
+      if ((v.x * (p.x - q.x) + v.z * (p.z - q.z)) / (d || 1) > 0.85) return rng() < cfg.jumpSkill * 0.5;
+    }
+    if (game.potato?.id === q.id && d < 1.8) return rng() < cfg.jumpSkill * 0.4;
+  }
+  return rng() < 0.004;
 }
 
 function unit(x, z) {

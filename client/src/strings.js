@@ -78,6 +78,8 @@ export const STR = {
   loading: 'Loading',
   loadingTips: [
     'Dash into others to knock them off the island!',
+    'Jump over the neon bar, over ice holes and over a dash coming at you.',
+    'Space jumps, Shift dashes. You can dash in the air too!',
     'A ring falls every 15 seconds. Stay near the middle.',
     'Grab the boxes for power-ups.',
     'Push Bomb sends everyone near you flying.',
@@ -194,7 +196,8 @@ export const STR = {
   tutorial: {
     title: 'How to play',
     move: 'Move with WASD / arrows (or the joystick)',
-    dash: 'Press SPACE to dash (or the DASH button)',
+    jump: 'Press SPACE to jump (or the JUMP button)',
+    dash: 'Press SHIFT to dash (or the DASH button)',
     push: 'Dash into the dummy to push it off!',
     done: 'You\'re ready! 👑',
     skip: 'Skip',
@@ -203,4 +206,6 @@ export const STR = {
 
   rotatePhone: 'Turn your phone sideways to play',
   dash: 'DASH',
+  jump: 'JUMP',
+  controls: [['Space', 'Jump'], ['Shift', 'Dash']],
 };

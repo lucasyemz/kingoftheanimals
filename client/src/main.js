@@ -191,6 +191,7 @@ const fx = createFx({
     color: (id) => colorOf(lobby?.players.find((p) => p.id === id)),
     hitStop: (ms) => (freezeUntil = performance.now() + ms),
     wasLocalDash: (id) => id === myId && performance.now() - localDashAt < 400,
+    wasLocalJump: (id) => id === myId && performance.now() - localJumpAt < 400,
     emoteBubble: (id, text, seconds) => animals.get(id)?.showEmote(text, seconds),
     vibrate: (ms) => navigator.userActivation?.hasBeenActive && navigator.vibrate?.(ms),
   },
@@ -210,7 +211,16 @@ const input = createInput({
     if (me && a && me.st === ST.ALIVE && me.dashCd <= 0 && latest.phase !== PHASE.COUNTDOWN) {
       localDashAt = performance.now();
       fx.localDash(a); // GDD: mostrar o dash local na hora
-      if (tutorial.active && tutorial.moved) tutorial.dashed = true;
+      if (tutorial.active && tutorial.jumped) tutorial.dashed = true;
+    }
+  },
+  onJump: () => {
+    const me = latest?.players.find((p) => p.id === myId);
+    const a = animals.get(myId);
+    if (me && a && me.st === ST.ALIVE && !(me.y > 0) && latest.phase !== PHASE.COUNTDOWN) {
+      localJumpAt = performance.now();
+      fx.localJump();
+      if (tutorial.active && tutorial.moved > 0.6) tutorial.jumped = true;
     }
   },
 });
@@ -224,6 +234,7 @@ let screen = 'home';
 let wins = {};
 let quickStarted = false;
 let localDashAt = -Infinity;
+let localJumpAt = -Infinity;
 let freezeUntil = 0;
 let frozenT = 0;
 const states = [];      // buffer para interpolar
@@ -336,7 +347,7 @@ const tutorial = { active: false, then: 'menu', moved: 0, dashed: false, done: f
 
 function startTutorial(d, then) {
   if (!d.nickname) return ui.needName();
-  Object.assign(tutorial, { active: true, then, moved: 0, dashed: false, done: false, started: false });
+  Object.assign(tutorial, { active: true, then, moved: 0, jumped: false, dashed: false, done: false, started: false });
   document.body.classList.add('tutorial');
   join('solo', { ...d, code: null, tutorial: true });
 }
@@ -361,8 +372,9 @@ function tutorialFrame(dt) {
   if (me && (latest.phase === PHASE.PLAYING) && Math.hypot(me.vx, me.vz) > 2) tutorial.moved += dt;
   let text = STR.tutorial.move;
   if (tutorial.done) text = STR.tutorial.done;
-  else if (tutorial.moved > 0.6 && tutorial.dashed) text = STR.tutorial.push;
-  else if (tutorial.moved > 0.6) text = STR.tutorial.dash;
+  else if (tutorial.dashed) text = STR.tutorial.push;
+  else if (tutorial.jumped) text = STR.tutorial.dash;
+  else if (tutorial.moved > 0.6) text = STR.tutorial.jump;
   if (latest.phase === PHASE.COUNTDOWN) text = STR.tutorial.title;
   ui.tutorialStep(text);
 }
@@ -398,6 +410,7 @@ function syncRoster() {
     let a = animals.get(p.id);
     if (!a) {
       a = createAnimal(p.animal, colorOf(p), { crownModel: crownModel?.clone(), debug: SHOW_DEBUG });
+      a.onLand = (x, z) => fx.landDust(x, z);
       animals.set(p.id, a);
       world.scene.add(a.root);
     }
@@ -613,6 +626,7 @@ function stepPredicted(inp) {
   pm.inputX = inp.x;
   pm.inputZ = inp.z;
   if (inp.dash) pm.dashBuffer = PHYSICS.DASH_BUFFER;
+  if (inp.jump) pm.jumpBuffer = PHYSICS.JUMP_BUFFER;
   // Rajada de vento: o servidor empurra todo mundo; a previsão faz igual
   const w = latest?.arena.wind;
   const hz = SCENARIOS[lobby?.scenario]?.hazard;
@@ -644,9 +658,10 @@ function reconcile(s) {
     dashCdMax: me.dashCdMax || PHYSICS.DASH_COOLDOWN,
     dashCd: (me.dashCd ?? 0) * (me.dashCdMax || PHYSICS.DASH_COOLDOWN),
     dashBuffer: 0, pu: me.pu, puT: me.puT ?? 0, inputX: 0, inputZ: 0, potato: !!me.potato,
+    y: me.y ?? 0, vy: me.vy ?? 0, jumpBuffer: 0,
   };
   for (const h of predict.history) stepPredicted(h);
-  predict.prev = { x: predict.me.x, z: predict.me.z };
+  predict.prev = { x: predict.me.x, z: predict.me.z, y: predict.me.y };
   // A correção do servidor não pula na tela: vira um erro que some em poucos frames
   if (selfView.source === 'predicted') {
     selfView.errX = selfView.x - predict.me.x;
@@ -667,6 +682,7 @@ function selfPose(p, now, dt) {
       ...p,
       x: prev.x + (pm.x - prev.x) * k,
       z: prev.z + (pm.z - prev.z) * k,
+      y: (prev.y ?? pm.y) + (pm.y - (prev.y ?? pm.y)) * k,
       vx: pm.vx, vz: pm.vz, dir: pm.dir, st: pm.st,
       dashCd: pm.dashCdMax ? pm.dashCd / pm.dashCdMax : 0,
     };
@@ -733,7 +749,7 @@ setInterval(() => {
   const data = { ...input.read(), seq: ++seq };
   const now = performance.now();
   if (predict.me) {
-    predict.prev = { x: predict.me.x, z: predict.me.z };
+    predict.prev = { x: predict.me.x, z: predict.me.z, y: predict.me.y };
     predict.history.push(data);
     stepPredicted(data);
     predict.stepAt = now;
@@ -828,7 +844,7 @@ function sampleState(renderT) {
     players: b.players.map((pb) => {
       const pa = a.byId[pb.id];
       if (!pa || pa.st === ST.OUT) return pb;
-      return { ...pb, x: lerp(pa.x, pb.x, k), z: lerp(pa.z, pb.z, k), dir: lerpAngle(pa.dir, pb.dir, k) };
+      return { ...pb, x: lerp(pa.x, pb.x, k), z: lerp(pa.z, pb.z, k), y: lerp(pa.y ?? 0, pb.y ?? 0, k), dir: lerpAngle(pa.dir, pb.dir, k) };
     }),
   };
 }
