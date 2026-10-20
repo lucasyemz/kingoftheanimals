@@ -16,7 +16,7 @@ import { createInput } from './input.js';
 import { createUI, createLoading, displayName, colorOf } from './ui.js';
 import { createRules } from './rules.js';
 import { createMinigamesView } from './minigames-view.js';
-import { settings, saveSettings, addStats, wallet, addCoins } from './settings.js';
+import { settings, saveSettings, addStats, wallet, addCoins, stats, XP, addXp, levelOf, trackMission } from './settings.js';
 
 // ---------- Atalhos de debug (GDD: fora de produção ou com ?debug=1) ----------
 
@@ -224,6 +224,7 @@ const input = createInput({
       localJumpAt = performance.now();
       fx.localJump();
       if (tutorial.active && tutorial.moved > 0.6) tutorial.jumped = true;
+      track('jumps');
     }
   },
 });
@@ -246,10 +247,33 @@ const replayBuf = [];   // últimos ~5 s de states, para o replay
 // Replay: 1,5 s antes da última queda até 0,9 s depois, a 55 % da velocidade
 const REPLAY = { BEFORE: 1500, AFTER: 900, SPEED: 0.55, DELAY: 450 };
 
-function earn(n) {
-  if (tutorial.active || !n) return;
-  matchCoins += n;
-  addCoins(n);
+// Moedas + XP da partida (e o resumo que aparece no pódio)
+const summary = { coins: 0, xp: 0, kos: 0, roundWins: 0, rounds: 0, levelUp: false, startLevel: 1 };
+function resetSummary() {
+  Object.assign(summary, { coins: 0, xp: 0, kos: 0, roundWins: 0, rounds: 0, levelUp: false, startLevel: levelOf(stats.xp ?? 0).level });
+}
+function earn(n, xp = 0) {
+  if (tutorial.active) return;
+  if (n) {
+    matchCoins += n;
+    summary.coins += n;
+    addCoins(n);
+  }
+  if (xp) {
+    summary.xp += xp;
+    if (addXp(xp)) {
+      summary.levelUp = true;
+      ui.toast(STR.levelUp(levelOf(stats.xp).level));
+    }
+  }
+}
+// Missões diárias: conta o evento e paga quem acabou de cumprir
+function track(stat, n = 1) {
+  if (tutorial.active) return;
+  for (const m of trackMission(stat, n)) {
+    earn(m.reward, XP.MISSION);
+    setTimeout(() => ui.toast(STR.missionDone(STR.missions[m.id], m.reward)), 600);
+  }
 }
 let freezeUntil = 0;
 let frozenT = 0;
@@ -290,7 +314,7 @@ function join(mode, { nickname, animal, code, quick = false, rejoin = null, tuto
   const send = () => {
     myId = net.id; // o lobby pode chegar antes da resposta do join
     const debug = isTutorial ? { ...DEBUG_OPTS, tutorial: true } : DEBUG_OPTS;
-    net.emit(MSG.JOIN, { code, nickname, animal, hat: wallet.hat, debug, quick, rejoin }, (res) => {
+    net.emit(MSG.JOIN, { code, nickname, animal, hat: wallet.hat, level: levelOf(stats.xp ?? 0).level, debug, quick, rejoin }, (res) => {
       if (!res?.ok) {
         myId = null;
         net.leave();
@@ -553,7 +577,10 @@ function enterLobby() {
 
 net.on(MSG.ROUND, ({ round, scenario, mode, format, final, qualify }) => {
   if (lobby) Object.assign(lobby, { round, scenario, roundMode: mode ?? 'classic', format });
-  if (round === 1) matchCoins = 0;
+  if (round === 1) {
+    matchCoins = 0;
+    resetSummary();
+  }
   rules.reset();
   mgView.reset();
   replay = null;
@@ -614,6 +641,7 @@ net.on(MSG.STATE, (s) => {
 });
 
 net.on(MSG.EVENT, (ev) => {
+  if (ev.type === EVENT.GRAB && ev.id === myId) track('grabs');
   if (ev.type === EVENT.TUTORIAL && tutorial.active) {
     tutorial.done = true;
     setTimeout(finishTutorial, 2200);
@@ -621,7 +649,9 @@ net.on(MSG.EVENT, (ev) => {
   if (ev.type === EVENT.FALL && !tutorial.active && myId && latest && latest.phase !== PHASE.ROUND_END) {
     if (ev.by === myId) {
       addStats({ kos: 1 });
-      earn(COINS.KO);
+      earn(COINS.KO, XP.KO);
+      summary.kos += 1;
+      track('kos');
     }
     if (ev.id === myId) addStats({ falls: 1 });
   }
@@ -744,9 +774,22 @@ net.on(MSG.SCORE, (score) => {
   const playing = myId && lobby?.players.some((p) => p.id === myId && (!p.spectator || p.eliminated));
   if (playing && score.kind === 'round') {
     addStats({ rounds: 1, roundWins: score.winner === myId ? 1 : 0 });
-    earn(COINS.ROUND + (score.winner === myId && !score.qualified ? COINS.ROUND_WIN : 0) + (score.qualified?.includes(myId) ? COINS.QUALIFY : 0));
+    const won = score.winner === myId && !score.qualified;
+    const qualified = !!score.qualified?.includes(myId);
+    earn(COINS.ROUND + (won ? COINS.ROUND_WIN : 0) + (qualified ? COINS.QUALIFY : 0), XP.ROUND + (won ? XP.ROUND_WIN : 0) + (qualified ? XP.QUALIFY : 0));
+    summary.rounds += 1;
+    if (won || (score.winner === myId && score.qualified)) {
+      summary.roundWins += 1;
+      track('roundWins');
+      track(`win:${score.mode ?? lobby?.roundMode}`);
+    }
+    if (qualified) track('qualify');
   }
-  if (playing && score.kind === 'match') earn(COINS.MATCH + (score.champion === myId ? COINS.MATCH_WIN : 0));
+  if (playing && score.kind === 'match') {
+    earn(COINS.MATCH + (score.champion === myId ? COINS.MATCH_WIN : 0), XP.MATCH + (score.champion === myId ? XP.MATCH_WIN : 0));
+    track('matches');
+    if (lobby?.mode === 'party') track('party');
+  }
   if (playing && score.kind === 'match') {
     addStats({ matches: 1, matchWins: score.champion === myId ? 1 : 0 });
   }
@@ -758,7 +801,7 @@ net.on(MSG.SCORE, (score) => {
   }
   // Pódio
   setTimeout(() => {
-    ui.coinsEarned(matchCoins);
+    ui.matchSummary({ ...summary, ...levelOf(stats.xp ?? 0) });
     screen = 'podium';
     document.body.classList.remove('in-game');
     input.setEnabled(false);
@@ -986,6 +1029,7 @@ function frame(now) {
         }
       }
       for (const [id, a] of animals) if (!present.has(id)) a.root.visible = false;
+      spectateFrame(s, dt, replaying);
       rules.update(s, dt, { animals, colorOf, players: lobbyById() });
       mgView.update(s, dt, { animals, colorOf, players: lobbyById() });
       if (latest) {
@@ -1010,6 +1054,7 @@ function frame(now) {
   fpsT += dt;
   if (fpsT >= 0.5) {
     debugInfo.fps = Math.round(frames / fpsT);
+    autoQuality(debugInfo.fps);
     frames = 0;
     fpsT = 0;
     if (SHOW_DEBUG) {
@@ -1017,6 +1062,52 @@ function frame(now) {
     }
   }
 }
+
+// ---------- Câmera de espectador ----------
+// Fora da rodada (caiu, foi eliminado ou entrou no meio): a câmera segue quem ainda
+// joga. Clique, toque ou Espaço troca de bicho.
+
+const spectate = { active: false, id: null };
+const LIVE = new Set([ST.ALIVE, ST.DASHING, ST.STUNNED]);
+function spectateFrame(s, dt, replaying) {
+  const me = s.players.find((p) => p.id === myId);
+  const playing = s.phase === PHASE.PLAYING || s.phase === PHASE.SUDDEN_DEATH;
+  const out = !me || !LIVE.has(me.st) && me.st !== ST.FALLING;
+  // Rei da colina: quem cai volta em 1,5 s, então a câmera fica na arena
+  if (!playing || replaying || !out || tutorial.active || lobby?.roundMode === 'hill') {
+    if (spectate.active) {
+      spectate.active = false;
+      if (playing && !replaying) world.focusOn(0, 0, 1, 0.6);
+    }
+    ui.watching(null);
+    return;
+  }
+  const alive = s.players.filter((p) => LIVE.has(p.st));
+  if (!alive.length) return;
+  let target = alive.find((p) => p.id === spectate.id);
+  if (!target) {
+    target = alive[0];
+    spectate.id = target.id;
+  }
+  spectate.active = true;
+  const a = animals.get(target.id);
+  world.follow(a?.root.position.x ?? target.x, a?.root.position.z ?? target.z, 0.7, dt);
+  ui.watching(displayName(lobbyById()[target.id]));
+}
+
+function nextSpectate() {
+  if (!spectate.active || !latest) return;
+  const alive = latest.players.filter((p) => LIVE.has(p.st));
+  if (!alive.length) return;
+  const i = alive.findIndex((p) => p.id === spectate.id);
+  spectate.id = alive[(i + 1) % alive.length].id;
+}
+addEventListener('pointerdown', (e) => {
+  if (spectate.active && !e.target.closest('button, input, .panel')) nextSpectate();
+});
+addEventListener('keydown', (e) => {
+  if (spectate.active && e.code === 'Space') nextSpectate();
+});
 
 // ---------- HUD dos modos ----------
 
@@ -1049,6 +1140,21 @@ function modeHud(s) {
     ui.hill(rows, hill.contested, hill.moveIn);
   } else {
     ui.hill(null);
+  }
+}
+
+// ---------- Qualidade automática ----------
+// Em "Auto", se a partida rodar abaixo de 35 fps por uns 5 s, passa para o gráfico leve
+// (e lembra disso na próxima visita).
+const slowSamples = [];
+function autoQuality(fps) {
+  if (settings.graphics !== 'auto' || world.lowQuality || screen !== 'game' || document.hidden) return;
+  slowSamples.push(fps < 35);
+  if (slowSamples.length > 10) slowSamples.shift();
+  if (slowSamples.length === 10 && slowSamples.filter(Boolean).length >= 8) {
+    world.setLowQuality();
+    saveSettings({ autoLow: true });
+    ui.toast(STR.autoLowGfx);
   }
 }
 

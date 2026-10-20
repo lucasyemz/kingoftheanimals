@@ -12,7 +12,8 @@ import { createBrain, botThink } from './bots.js';
 import { resetRoundRules, updateHazard, inOpenHole, updatePotato, potatoContact, updateHill, rulesPayload } from './modes.js';
 import { resetMinigame, updateMinigame, onMissingFloor, minigamePayload } from './minigames.js';
 
-const DIFFICULTIES = Object.keys(BOTS.DIFFICULTY);
+const LEVELS = Object.keys(BOTS.DIFFICULTY); // easy, medium, hard
+const DIFFICULTIES = [...LEVELS, 'auto'];   // auto: os bots se ajustam a quem está jogando
 const POWERUP_TYPES = Object.keys(POWERUPS.TYPES);
 const r2 = (v) => Math.round(v * 100) / 100;
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
@@ -131,7 +132,8 @@ export class Game {
     this.players = new Map();
     this.hostId = null;
     this.phase = PHASE.LOBBY;
-    this.settings = { bots: BOTS.DEFAULT_COUNT, difficulty: BOTS.DEFAULT_DIFFICULTY, mode: 'classic' };
+    // Single Player começa na dificuldade automática
+    this.settings = { bots: BOTS.DEFAULT_COUNT, difficulty: code === 'SOLO' ? 'auto' : BOTS.DEFAULT_DIFFICULTY, mode: 'classic' };
     if (isPublic) Object.assign(this.settings, { difficulty: QUICK.DIFFICULTY, mode: QUICK.MODE });
     this.kingId = null;
 
@@ -200,7 +202,7 @@ export class Game {
     return p;
   }
 
-  addHuman(id, { nickname, animal, hat: hatId } = {}) {
+  addHuman(id, { nickname, animal, hat: hatId, level: lvl } = {}) {
     const name = String(nickname ?? '').trim().slice(0, ROOM.NICKNAME_MAX);
     if (!name) return { ok: false, error: JOIN_ERROR.BAD_NICKNAME };
     if (!ANIMALS.includes(animal)) return { ok: false, error: JOIN_ERROR.BAD_ANIMAL };
@@ -215,7 +217,8 @@ export class Game {
     const midMatch = this.phase !== PHASE.LOBBY && this.phase !== PHASE.PODIUM;
     const token = Array.from({ length: 16 }, () => Math.floor(Math.random() * 36).toString(36)).join('');
     const hat = typeof hatId === 'string' && Object.hasOwn(HATS, hatId) ? hatId : 'none';
-    this.newPlayer(id, { nickname: name, animal, spectator: midMatch && ROOM.JOIN_MID_MATCH_AS_SPECTATOR, token, hat });
+    const level = clamp(Math.floor(num(lvl, 1)), 1, 999);
+    this.newPlayer(id, { nickname: name, animal, spectator: midMatch && ROOM.JOIN_MID_MATCH_AS_SPECTATOR, token, hat, level });
     if (!this.hostId) this.hostId = id;
     this.clampBotSetting();
     if (this.public && this.phase === PHASE.LOBBY && this.autoStartT === null) this.autoStartT = QUICK.AUTO_START;
@@ -278,7 +281,7 @@ export class Game {
     const bots = this.bots;
     const keep = bots.sort((a, b) => (b.id === this.kingId) - (a.id === this.kingId));
     for (const extra of keep.slice(this.settings.bots)) this.players.delete(extra.id);
-    for (const b of this.bots) b.bot = createBrain(this.settings.difficulty, this.rng);
+    for (const b of this.bots) b.bot = createBrain(this.concreteDifficulty(), this.rng);
 
     const usedNames = new Set(this.bots.map((b) => b.botName));
     while (this.bots.length < this.settings.bots && this.players.size < ROOM.MAX_PLAYERS) {
@@ -292,7 +295,7 @@ export class Game {
       usedNames.add(botName);
       this.newPlayer(`bot${this.nextBotId++}`, {
         animal: pool[Math.floor(this.rng() * pool.length)],
-        bot: createBrain(this.settings.difficulty, this.rng),
+        bot: createBrain(this.concreteDifficulty(), this.rng),
         botName,
         connected: false,
       });
@@ -320,6 +323,7 @@ export class Game {
       Object.assign(p, { wins: 0, kos: 0, selfKos: 0, aliveTime: 0, spectator: false, eliminated: false });
     }
     this.kingslayerId = null;
+    this.autoLevel = BOTS.AUTO.START;
     this.round = this.debug.round ? this.debug.round - 1 : 0;
     this.sendLobby();
     this.startRound();
@@ -398,9 +402,10 @@ export class Game {
         lastToucher: null, touchT: -Infinity,
         roundKos: 0, roundSelfKo: false,
       });
-      if (p.bot) p.bot = createBrain(p.bot.difficulty, this.rng);
+      if (p.bot) p.bot = createBrain(this.botDifficulty(i, list.length, p.bot.difficulty), this.rng);
     });
     if (this.debug.tutorial) this.placeTutorial();
+    this.fallOrder = [];
 
     this.send(MSG.ROUND, {
       round: this.round, scenario: this.scenario, mode: this.mode, format: this.format,
@@ -838,6 +843,7 @@ export class Game {
     const by = credited && this.players.has(p.lastToucher) ? p.lastToucher : null;
     if (!afterRound) {
       this.fellThisTick.push(p);
+      this.fallOrder?.push(p.id);
       if (by) {
         const k = this.players.get(by);
         k.kos += 1;
@@ -884,6 +890,7 @@ export class Game {
     winner.wins += 1;
     this.roundWinner = winner.id;
     this.qualified = qualified ? qualified.map((p) => p.id) : null;
+    this.adjustAutoLevel(winner);
     this.event(EVENT.ROUND_END, { winner: winner.id });
 
     const list = this.participants;
@@ -905,6 +912,37 @@ export class Game {
       eliminated: this.qualified ? this.participants.filter((p) => !this.qualified.includes(p.id)).map((p) => p.id) : null,
       next: this.format === 'normal' ? null : this.pool[0] ?? null,
     });
+  }
+
+  // A dificuldade de verdade de um bot novo ('auto' vira o degrau atual)
+  concreteDifficulty() {
+    if (this.settings.difficulty !== 'auto') return this.settings.difficulty;
+    return LEVELS[Math.round(this.autoLevel ?? BOTS.AUTO.START)];
+  }
+
+  // Dificuldade automática: cada bot fica fácil, médio ou difícil conforme o nível
+  // (0 a 2, com fração: parte dos bots um degrau acima)
+  botDifficulty(i, n, current) {
+    if (this.settings.difficulty !== 'auto' || current === 'dummy') return current;
+    const base = Math.floor(this.autoLevel);
+    const up = (i * 0.618) % 1 < this.autoLevel - base ? 1 : 0;
+    return LEVELS[Math.min(LEVELS.length - 1, base + up)];
+  }
+
+  // Depois de cada rodada: as pessoas foram bem? bots mais fortes; foram mal? mais fracos
+  adjustAutoLevel(winner) {
+    if (this.settings.difficulty !== 'auto') return;
+    const humans = this.participants.filter((p) => !p.bot);
+    if (!humans.length) return;
+    const A = BOTS.AUTO;
+    let delta;
+    if (!winner.bot) delta = A.WIN_STEP;
+    else {
+      const early = Math.ceil(this.participants.length / 2);
+      const outEarly = humans.some((h) => this.fallOrder.indexOf(h.id) >= 0 && this.fallOrder.indexOf(h.id) < early);
+      delta = outEarly ? -A.LOSE_STEP : -A.LOSE_STEP / 3;
+    }
+    this.autoLevel = clamp(this.autoLevel + delta, 0, LEVELS.length - 1);
   }
 
   winsTable() {
@@ -1085,6 +1123,7 @@ export class Game {
         kingStreak: p.kingStreak,
         wins: p.wins,
         hat: p.hat,
+        level: p.bot ? null : p.level ?? 1,
         eliminated: p.eliminated,
       })),
     };

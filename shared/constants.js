@@ -270,6 +270,8 @@ export const BOTS = {
   MAX: 7,
   DEFAULT_COUNT: 3,           // definido
   DEFAULT_DIFFICULTY: 'medium',
+  // Dificuldade automática: começa em médio; ganhar a rodada sobe, cair cedo desce
+  AUTO: { START: 1, WIN_STEP: 0.4, LOSE_STEP: 0.4 },
   REPLACE_LEAVER: 'medium',   // GDD: bot médio assume quem sai
   THINK_INTERVAL: 0.1,        // definido: reavalia 10 × por segundo; o atraso real vem de reactionMs
   DASH_RANGE: 2.4,            // = DASH_SPEED × DASH_DURATION

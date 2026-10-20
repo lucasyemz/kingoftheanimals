@@ -12,7 +12,8 @@ import { settings } from './settings.js';
 
 export const IS_MOBILE = matchMedia('(pointer: coarse)').matches;
 // Gráfico leve: sem sombra, sem bloom, metade dos props e partículas. Automático no celular.
-export const LOW_GFX = settings.graphics === 'low' || (settings.graphics === 'auto' && IS_MOBILE);
+// autoLow: numa visita anterior o aparelho engasgou e o jogo baixou a qualidade sozinho
+export const LOW_GFX = settings.graphics === 'low' || (settings.graphics === 'auto' && (IS_MOBILE || settings.autoLow));
 
 const RING_COUNT = Math.round((ARENA.RADIUS - ARENA.MIN_RADIUS) / ARENA.RING_WIDTH);
 const WARNING_COLOR = new THREE.Color('#ff2a2a');
@@ -326,7 +327,7 @@ export function createWorld(canvas) {
       edgeMats[i].color.set(sc.edgeGlow ?? '#000000');
       m.userData.rim.visible = !!sc.edgeGlow;
     });
-    world.bloom = !!sc.bloom && !!composer;
+    world.bloom = !!sc.bloom && !!composer && !world.lowQuality;
     buildSurround(sc, id);
   };
 
@@ -398,6 +399,31 @@ export function createWorld(canvas) {
   world.focusOn = (x, z, zoom, duration = 0.5) => {
     gsap.to(world.focus, { x, z, duration, ease: 'power2.out', overwrite: true });
     gsap.to(world, { focusZoom: zoom, duration, ease: 'power2.out', overwrite: true });
+  };
+
+  // Qualidade automática: corta sombra, bloom e resolução sem recarregar a página
+  world.lowQuality = LOW_GFX;
+  world.setLowQuality = () => {
+    if (world.lowQuality) return;
+    world.lowQuality = true;
+    world.bloom = false;
+    renderer.setPixelRatio(Math.min(devicePixelRatio, 1));
+    renderer.shadowMap.enabled = false;
+    sun.castShadow = false;
+    scene.traverse((o) => {
+      if (o.material) [].concat(o.material).forEach((m) => (m.needsUpdate = true));
+    });
+    world.resize();
+  };
+
+  // Câmera de espectador: segue um ponto suavemente, a cada quadro
+  world.follow = (x, z, zoom, dt) => {
+    gsap.killTweensOf(world.focus);
+    gsap.killTweensOf(world, 'focusZoom');
+    const k = Math.min(1, dt * 4);
+    world.focus.x += (x - world.focus.x) * k;
+    world.focus.z += (z - world.focus.z) * k;
+    world.focusZoom += (zoom - world.focusZoom) * k;
   };
 
   world.resize = () => {

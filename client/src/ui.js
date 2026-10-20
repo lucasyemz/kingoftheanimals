@@ -4,7 +4,7 @@ import gsap from 'gsap';
 import { ANIMALS, PLAYER_COLORS, BOTS, ROOM, MATCH, AWARDS, FX, MINIGAMES, FORMATS, HATS } from '../../shared/constants.js';
 import { PHASE } from '../../shared/messages.js';
 import { STR } from './strings.js';
-import { settings, saveSettings, stats, wallet, equipHat } from './settings.js';
+import { settings, saveSettings, stats, wallet, equipHat, levelOf, missions } from './settings.js';
 import { HAT_ICONS } from './hats.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -52,6 +52,7 @@ export function createUI(handlers) {
           </details>
           <button class="link-btn how">${STR.howToPlay}</button>
           <button class="link-btn wardrobe-open">🎩 ${STR.wardrobe}</button>
+          <button class="link-btn missions-open">🎯 ${STR.missionsTitle}</button>
         </div>
         <div class="error" aria-live="polite"></div>
       </div>
@@ -95,7 +96,7 @@ export function createUI(handlers) {
           <div class="setting">
             <span class="field-label">${STR.difficulty}</span>
             <div class="segmented">
-              ${Object.keys(BOTS.DIFFICULTY).map((d) => `<button class="btn small diff" data-diff="${d}">${STR.difficulties[d]}</button>`).join('')}
+              ${[...Object.keys(BOTS.DIFFICULTY), 'auto'].map((d) => `<button class="btn small diff" data-diff="${d}">${STR.difficulties[d]}</button>`).join('')}
             </div>
           </div>
           <button class="btn primary start">${STR.start}</button>
@@ -136,7 +137,7 @@ export function createUI(handlers) {
       <div class="podium-head">
         <div class="field-label">${STR.awards.champion}</div>
         <div class="champion outlined"></div>
-        <div class="coins-earned outlined" hidden></div>
+        <div class="match-summary" hidden></div>
       </div>
       <div class="panel awards"></div>
       <div class="podium-actions">
@@ -164,6 +165,15 @@ export function createUI(handlers) {
         <button class="btn primary close-settings">${STR.close}</button>
       </div>
     </section>
+    <section class="overlay missions-modal" hidden>
+      <div class="panel missions-panel">
+        <div class="wardrobe-head"><strong class="settings-title">${STR.missionsTitle}</strong><strong class="player-level"></strong></div>
+        <div class="level-bar"><i></i></div>
+        <ul class="mission-list"></ul>
+        <div class="hint">${STR.missionsHint}</div>
+        <button class="btn primary close-missions">${STR.close}</button>
+      </div>
+    </section>
     <section class="overlay wardrobe-modal" hidden>
       <div class="panel wardrobe-panel">
         <div class="wardrobe-head"><strong class="settings-title">${STR.wardrobe}</strong><strong class="wallet-coins"></strong></div>
@@ -184,6 +194,7 @@ export function createUI(handlers) {
     podium: $('.podium', root),
     settings: $('.settings-modal', root),
     wardrobe: $('.wardrobe-modal', root),
+    missions: $('.missions-modal', root),
   };
 
   // ---------- Home ----------
@@ -268,7 +279,7 @@ export function createUI(handlers) {
     syncSettings();
   });
   root.querySelectorAll('.gfx').forEach((b) => b.addEventListener('click', () => {
-    saveSettings({ graphics: b.dataset.gfx });
+    saveSettings({ graphics: b.dataset.gfx, autoLow: false });
     syncSettings();
   }));
   $('.do-reload', root).addEventListener('click', () => location.reload());
@@ -280,10 +291,32 @@ export function createUI(handlers) {
   function renderStats() {
     const st = $('.home-stats', root);
     st.hidden = !stats.rounds && !wallet.coins;
-    st.innerHTML = `<span class="stats-title">${STR.statsTitle}</span>` +
+    const lv = levelOf(stats.xp ?? 0);
+    st.innerHTML = `<span class="stats-title">${STR.statsTitle} · ${STR.level(lv.level)}</span><span class="level-bar small"><i style="width:${Math.round((lv.into / lv.need) * 100)}%"></i></span>` +
       STR.statsLine(stats).map(([icon, n, label]) => `<span class="stat"><b>${icon} ${n}</b> ${label}</span>`).join('') +
       `<span class="stat"><b>${STR.coins(wallet.coins)}</b></span>`;
   }
+
+  // ---------- Missões diárias ----------
+  const missionsEl = $('.missions-modal', root);
+  function renderMissions() {
+    const lv = levelOf(stats.xp ?? 0);
+    $('.player-level', root).textContent = `${STR.level(lv.level)} · ${lv.into}/${lv.need} XP`;
+    $('.missions-panel .level-bar i', root).style.width = `${Math.round((lv.into / lv.need) * 100)}%`;
+    $('.mission-list', root).innerHTML = missions().list.map((m) => {
+      const pct = Math.round((m.have / m.goal) * 100);
+      return `<li class="${m.done ? 'done' : ''}"><div class="m-text">${m.done ? '✔ ' : ''}${esc(STR.missions[m.id])}</div><div class="m-reward">🪙 ${m.reward}</div><div class="m-bar"><i style="width:${pct}%"></i></div><div class="m-count">${m.have}/${m.goal}</div></li>`;
+    }).join('');
+  }
+  $('.missions-open', root).addEventListener('click', () => {
+    renderMissions();
+    missionsEl.hidden = false;
+  });
+  $('.close-missions', root).addEventListener('click', () => {
+    missionsEl.hidden = true;
+    renderStats();
+  });
+  missionsEl.addEventListener('click', (e) => e.target === missionsEl && (missionsEl.hidden = true));
 
   // ---------- Guarda-roupa ----------
   const wardrobeEl = $('.wardrobe-modal', root);
@@ -340,6 +373,7 @@ export function createUI(handlers) {
   }
 
   let toastTimer = null;
+  let watchingName = null;
   function toast(text) {
     const el = $('.toast', root);
     el.textContent = text;
@@ -399,7 +433,8 @@ export function createUI(handlers) {
           const king = p.id === lobby.kingId ? `<span class="crown-tag">👑 ${STR.kingStreak(p.kingStreak)}</span>` : '';
           const host = p.id === lobby.hostId ? `<span class="badge host">${STR.hostBadge}</span>` : '';
           const you = p.id === myId ? ` ${STR.you}` : '';
-          return `<li><span class="dot" style="background:${colorOf(p)}"></span>${nameTag(p)}${esc(you)}${host}${king}<span class="animal-name">${esc(STR.animals[p.animal])}</span></li>`;
+          const lvl = p.level ? `<span class="badge lvl">${STR.level(p.level)}</span>` : '';
+          return `<li><span class="dot" style="background:${colorOf(p)}"></span>${nameTag(p)}${esc(you)}${lvl}${host}${king}<span class="animal-name">${esc(STR.animals[p.animal])}</span></li>`;
         })
         .join('');
       const maxBots = Math.min(BOTS.MAX, ROOM.MAX_PLAYERS - humans.length);
@@ -434,7 +469,7 @@ export function createUI(handlers) {
       const me = state.players.find((p) => p.id === myId);
       const out = me ? me.st === 'out' || me.st === 'falling' : true;
       $('.hud-spectating', root).hidden = !out;
-      $('.hud-spectating', root).textContent = lobby?.roundMode === 'hill' && me ? STR.respawning : STR.spectating;
+      $('.hud-spectating', root).textContent = lobby?.roundMode === 'hill' && me ? STR.respawning : watchingName ? STR.watching(watchingName, matchMedia('(pointer: coarse)').matches) : STR.spectating;
     },
 
     scores(lobby, wins = {}) {
@@ -580,10 +615,17 @@ export function createUI(handlers) {
       document.body.classList.toggle('replaying', on);
     },
 
-    coinsEarned(n) {
-      const el = $('.coins-earned', root);
-      el.hidden = !n;
-      el.textContent = STR.coinsEarned(n);
+    // Pódio: o que você ganhou nesta partida
+    matchSummary(s) {
+      const el = $('.match-summary', root);
+      el.hidden = !(s.coins || s.xp);
+      el.innerHTML = `<div class="sum-top"><b class="outlined">${STR.coinsEarned(s.coins)}</b><b class="outlined xp">${STR.xpEarned(s.xp)}</b></div>` +
+        `<div class="sum-line">${STR.summaryLine(s)}</div>` +
+        `<div class="sum-level"><span>${STR.level(s.level)}</span><span class="level-bar"><i style="width:${Math.round((s.into / s.need) * 100)}%"></i></span>${s.levelUp ? '<span class="lvl-up">⬆</span>' : ''}</div>`;
+    },
+
+    watching(name) {
+      watchingName = name;
     },
 
     tutorialStep(text) {
