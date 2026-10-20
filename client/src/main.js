@@ -92,6 +92,12 @@ function soloBackend() {
         ack?.(Date.now());
       }
     },
+    // Single Player: a pausa congela a simulação
+    pause(on) {
+      clearInterval(timer);
+      timer = null;
+      if (!on && game) timer = setInterval(() => game.tick(), 1000 / NET.TICK_RATE);
+    },
     close() {
       clearInterval(timer);
       game = null;
@@ -120,6 +126,9 @@ const net = {
     this.leave();
     this.mode = mode;
     this.backend = mode === 'solo' ? soloBackend() : onlineBackend();
+  },
+  pause(on) {
+    this.backend?.pause?.(on);
   },
   leave() {
     this.backend?.close();
@@ -168,6 +177,8 @@ const ui = createUI({
     preview?.setLabel(previewLabel());
   },
   onLeave: () => leaveToMenu(),
+  onPause: (on) => setPaused(on),
+  onRestart: () => restartSolo(),
   onSettings: (d) => net.emit(MSG.SETTINGS, { bots: lobby?.bots, difficulty: lobby?.difficulty, mode: lobby?.mode, ...d }),
   onStart: () => net.emit(MSG.START, { bots: lobby?.bots, difficulty: lobby?.difficulty, mode: lobby?.mode }),
   onRematch: () => net.emit(MSG.REMATCH, {}),
@@ -216,6 +227,10 @@ const input = createInput({
       fx.localDash(a); // GDD: mostrar o dash local na hora
       if (tutorial.active && tutorial.jumped) tutorial.dashed = true;
     }
+  },
+  onMenu: () => {
+    if (ui.settingsOpen && paused) return ui.closeSettings(); // Esc fecha primeiro as configurações
+    setPaused(!paused);
   },
   onJump: () => {
     const me = latest?.players.find((p) => p.id === myId);
@@ -344,7 +359,50 @@ function waitOnline(fn) {
   net.on('status', check);
 }
 
+// ---------- Pausa ----------
+// Esc / ❚❚ / Start. No Single Player a partida congela; online ela continua (só o menu abre).
+
+let paused = false;
+function setPaused(on) {
+  if (on && (screen !== 'game' || !myId)) return;
+  if (on === paused) return;
+  paused = on;
+  if (net.mode === 'solo') {
+    net.pause(on);
+    // na volta, o relógio da partida ficou parado: ressincroniza a interpolação e a previsão
+    if (!on) {
+      states.length = 0;
+      clockOffset = null;
+      predict.me = null;
+      predict.history.length = 0;
+    }
+  }
+  input.setEnabled(!on && screen === 'game');
+  document.body.classList.toggle('paused', on);
+  if (on) ui.showPause(tutorial.active ? 'tutorial' : net.mode === 'solo' ? 'solo' : 'online');
+  else ui.hidePause();
+}
+
+function closePause() {
+  if (!paused) return;
+  paused = false;
+  document.body.classList.remove('paused');
+  ui.hidePause();
+}
+
+// Recomeçar: volta para o lobby do Single Player (ou pula o tutorial)
+function restartSolo() {
+  closePause();
+  if (tutorial.active) return finishTutorial();
+  net.leave();
+  myId = null;
+  lobby = null;
+  latest = null;
+  join('solo', { nickname: home.nickname, animal: home.animal, code: null });
+}
+
 function leaveToMenu() {
+  closePause();
   session.set(null);
   tutorial.active = false;
   ui.tutorialStep(null);
@@ -563,6 +621,7 @@ net.on(MSG.LOBBY, (data) => {
 });
 
 function enterLobby() {
+  closePause();
   screen = 'lobby';
   document.body.classList.remove('in-game');
   wins = {};
@@ -606,7 +665,7 @@ net.on(MSG.ROUND, ({ round, scenario, mode, format, final, qualify }) => {
   ui.clearFeed();
   ui.showGame();
   ui.scores(lobby, wins);
-  input.setEnabled(true);
+  input.setEnabled(!paused);
   document.body.classList.add('in-game');
   fx.playMusic('match');
 });
@@ -804,6 +863,7 @@ net.on(MSG.SCORE, (score) => {
   // Pódio
   setTimeout(() => {
     ui.matchSummary({ ...summary, ...levelOf(stats.xp ?? 0) });
+    closePause();
     screen = 'podium';
     document.body.classList.remove('in-game');
     input.setEnabled(false);
@@ -834,6 +894,7 @@ let seq = 0;
 let lastPing = 0;
 setInterval(() => {
   if (!myId || !latest || !IN_MATCH.has(latest.phase) || screen !== 'game') return;
+  if (paused && net.mode === 'solo') return; // simulação congelada: não prevê nem envia
   const data = { ...input.read(), seq: ++seq };
   const now = performance.now();
   if (predict.me) {
@@ -994,6 +1055,7 @@ let fpsT = 0;
 let last = performance.now();
 function frame(now) {
   requestAnimationFrame(frame);
+  input.pollMenu();
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
   const frozen = now < freezeUntil;
@@ -1179,6 +1241,7 @@ function autoQuality(fps) {
 // ---------- Início ----------
 
 function showHome() {
+  closePause();
   screen = 'home';
   document.body.classList.remove('in-game');
   input.setEnabled(false);

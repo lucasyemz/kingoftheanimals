@@ -147,6 +147,18 @@ export function createUI(handlers) {
     </section>
 
     <button class="icon-btn gear" aria-label="${STR.settings}" title="${STR.settings}">⚙</button>
+    <button class="icon-btn pause-btn" aria-label="${STR.pause.title}" title="${STR.pause.title} (Esc)"><i></i><i></i></button>
+    <section class="overlay pause-modal" hidden>
+      <div class="panel pause-panel">
+        <strong class="settings-title pause-title"></strong>
+        <div class="hint pause-hint"></div>
+        <button class="btn primary pause-resume">${STR.pause.resume}</button>
+        <button class="btn pause-settings">⚙ ${STR.settings}</button>
+        <button class="btn pause-invite">${STR.copyLink}</button>
+        <button class="btn pause-restart"></button>
+        <button class="btn danger pause-leave"></button>
+      </div>
+    </section>
     <section class="overlay settings-modal" hidden>
       <div class="panel settings-panel">
         <strong class="settings-title">${STR.settings}</strong>
@@ -266,6 +278,19 @@ export function createUI(handlers) {
     settingsEl.hidden = false;
   });
   $('.close-settings', root).addEventListener('click', () => (settingsEl.hidden = true));
+
+  // ---------- Pausa (Esc, botão ❚❚ ou Start no controle) ----------
+  const pauseEl = $('.pause-modal', root);
+  $('.pause-btn', root).addEventListener('click', () => handlers.onPause?.(true));
+  $('.pause-resume', root).addEventListener('click', () => handlers.onPause?.(false));
+  pauseEl.addEventListener('click', (e) => e.target === pauseEl && handlers.onPause?.(false));
+  $('.pause-settings', root).addEventListener('click', () => {
+    syncSettings();
+    settingsEl.hidden = false;
+  });
+  $('.pause-invite', root).addEventListener('click', () => handlers.onCopyLink());
+  $('.pause-restart', root).addEventListener('click', () => handlers.onRestart?.());
+  $('.pause-leave', root).addEventListener('click', () => handlers.onLeave());
   settingsEl.addEventListener('click', (e) => e.target === settingsEl && (settingsEl.hidden = true));
   volMusic.addEventListener('input', () => {
     saveSettings({ music: Number(volMusic.value) });
@@ -622,6 +647,37 @@ export function createUI(handlers) {
       el.innerHTML = `<div class="sum-top"><b class="outlined">${STR.coinsEarned(s.coins)}</b><b class="outlined xp">${STR.xpEarned(s.xp)}</b></div>` +
         `<div class="sum-line">${STR.summaryLine(s)}</div>` +
         `<div class="sum-level"><span>${STR.level(s.level)}</span><span class="level-bar"><i style="width:${Math.round((s.into / s.need) * 100)}%"></i></span>${s.levelUp ? '<span class="lvl-up">⬆</span>' : ''}</div>`;
+    },
+
+    // kind: 'solo' (pausa de verdade) | 'online' (a partida continua) | 'tutorial'
+    showPause(kind) {
+      const P = STR.pause;
+      $('.pause-title', root).textContent = kind === 'online' ? P.menuTitle : P.title;
+      $('.pause-hint', root).textContent = kind === 'online' ? P.onlineHint : '';
+      $('.pause-hint', root).hidden = kind !== 'online';
+      $('.pause-invite', root).hidden = kind !== 'online';
+      $('.pause-restart', root).hidden = kind === 'online';
+      $('.pause-restart', root).textContent = kind === 'tutorial' ? P.skipTutorial : P.restart;
+      $('.pause-leave', root).textContent = kind === 'online' ? P.leaveRoom : P.leave;
+      pauseEl.hidden = false;
+      $('.pause-resume', root).focus();
+    },
+
+    hidePause() {
+      pauseEl.hidden = true;
+      settingsEl.hidden = true;
+    },
+
+    get pauseOpen() {
+      return !pauseEl.hidden;
+    },
+
+    get settingsOpen() {
+      return !settingsEl.hidden;
+    },
+
+    closeSettings() {
+      settingsEl.hidden = true;
     },
 
     watching(name) {

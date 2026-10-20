@@ -1269,6 +1269,87 @@ body.in-game .icon-btn.gear {
   display: none;
 }
 
+/* Pausa: mesmo lugar do ⚙, só dentro da partida; o placar vai para a esquerda dele */
+.icon-btn.pause-btn {
+  display: none;
+  position: absolute;
+  top: max(12px, env(safe-area-inset-top));
+  right: 16px;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 3px solid var(--ink);
+  background: var(--panel);
+  color: #fff;
+  padding: 0;
+  cursor: pointer;
+  box-shadow: 0 3px 0 var(--ink);
+  z-index: 5;
+  pointer-events: auto;
+}
+
+body.in-game .icon-btn.pause-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+}
+
+/* duas barrinhas desenhadas (o símbolo ❚❚ não existe em todas as fontes) */
+.icon-btn.pause-btn i {
+  display: block;
+  width: 5px;
+  height: 16px;
+  border-radius: 2px;
+  background: #fff;
+}
+
+body.in-game .hud-scores {
+  right: 72px;
+}
+
+body.replaying .icon-btn.pause-btn {
+  opacity: 0;
+}
+
+#ui .pause-modal {
+  background: rgb(29 27 47 / 0.6);
+  pointer-events: auto;
+  z-index: 9;
+}
+
+.pause-panel {
+  width: min(340px, 100%);
+  display: grid;
+  gap: 10px;
+}
+
+/* pausado: os controles de toque saem da frente do menu */
+body.paused #touch {
+  display: none !important;
+}
+
+@media (max-height: 520px) {
+  .pause-panel {
+    gap: 6px;
+    padding: 12px 16px;
+  }
+
+  .pause-panel .btn {
+    min-height: 38px;
+    padding: 4px 12px;
+    font-size: 16px;
+  }
+}
+
+.pause-panel .hint {
+  color: #ffd23f;
+}
+
+.btn.danger {
+  background: #e63946;
+}
+
 #ui .settings-modal {
   background: rgb(29 27 47 / 0.45);
   pointer-events: auto;

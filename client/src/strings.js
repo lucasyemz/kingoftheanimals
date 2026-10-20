@@ -221,6 +221,16 @@ export const STR = {
 
   // Configurações
   settings: 'Settings',
+  pause: {
+    title: 'Paused',
+    menuTitle: 'Menu',
+    onlineHint: 'The match keeps going while this menu is open!',
+    resume: 'Resume',
+    restart: 'Restart (back to lobby)',
+    skipTutorial: 'Skip tutorial',
+    leave: 'Quit to main menu',
+    leaveRoom: 'Leave room',
+  },
   music: 'Music',
   effects: 'Effects',
   mute: 'Mute all',

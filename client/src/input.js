@@ -17,7 +17,7 @@ const KEYS = {
 const EMOTE_KEYS = ['Digit1', 'Digit2', 'Digit3', 'Digit4'];
 const PAD_DEAD_ZONE = 0.2;
 
-export function createInput({ onEmote, onDash, onJump, touchRoot }) {
+export function createInput({ onEmote, onDash, onJump, onMenu, touchRoot }) {
   const down = new Set();
   let jumpQueued = false;
   let keyCharge = false;    // segurando a tecla de dash
@@ -28,11 +28,16 @@ export function createInput({ onEmote, onDash, onJump, touchRoot }) {
   let stick = { x: 0, z: 0 };
   let padDashWas = false;
   let padEmoteWas = [false, false, false, false];
+  let padStartWas = false;
   let enabled = false;
 
   const isTyping = () => ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName);
 
   addEventListener('keydown', (e) => {
+    if (e.code === 'Escape' && !e.repeat) {
+      onMenu?.();
+      return;
+    }
     if (isTyping()) return;
     if (KEYS.dash.includes(e.code)) {
       e.preventDefault();
@@ -158,6 +163,13 @@ export function createInput({ onEmote, onDash, onJump, touchRoot }) {
   }
 
   return {
+    // Start do controle abre/fecha o menu de pausa (chamado a cada quadro, mesmo pausado)
+    pollMenu() {
+      const pad = navigator.getGamepads?.().find((p) => p);
+      const start = !!pad?.buttons[9]?.pressed;
+      if (start && !padStartWas) onMenu?.();
+      padStartWas = start;
+    },
     setEnabled(on) {
       enabled = on;
       if (!on) jumpQueued = keyCharge = touchCharge = chargeLatch = false;
