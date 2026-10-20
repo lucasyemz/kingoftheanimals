@@ -64,8 +64,10 @@ export const PHYSICS = {
   DASH_SPEED: 16,
   DASH_DURATION: 0.15,        // durante o dash não há atrito nem controle
   DASH_COOLDOWN: 1.2,
-  PUSH_FACTOR: 1.5,           // empurrão = 1,5 × velocidade relativa
-  DASH_PUSH_FACTOR: 2.5,      // quem está em dash empurra 2,5 ×
+  // definido (era 1,5 e 2,5 do GDD): rodadas com 8 bots médios duravam ~20 s.
+  // Com 1,0 e 1,8 + nascer a 6 m + bots médios mais atentos à borda, ~35 s.
+  PUSH_FACTOR: 1.0,           // empurrão = 1,0 × velocidade relativa
+  DASH_PUSH_FACTOR: 1.8,      // quem está em dash empurra 1,8 ×
   STUN_DURATION: 0.3,
   FALL_DURATION: 1.5,
   FALL_DRAG: 0.85,            // definido: velocidade horizontal × 0,85 por tick durante a queda
@@ -86,7 +88,7 @@ export const ARENA = {
   // definido: os anéis param quando sobra um miolo de 1 m (10 - 6 × 1,5).
   // Só a morte súbita come o miolo.
   MIN_RADIUS: 1,
-  SPAWN_RADIUS: 8,            // definido: todos nascem em círculo no anel de dentro da borda
+  SPAWN_RADIUS: 6,            // definido: nascem em círculo a 4 m da borda (com 8 m a 1ª queda vinha em 2 s)
   SUDDEN_DEATH_SHRINK: 0.5,   // definido: m/s de encolhimento contínuo depois dos 90 s
 };
 
@@ -144,8 +146,8 @@ export const BOTS = {
   NAME_ADJECTIVE_COUNT: 12,   // strings.botAdjectives precisa ter 12 itens ("Brakeless", "Turbo"...)
   DIFFICULTY: {
     //               reação  mira±  borda  ignora PU  posiciona  desvia
-    easy:   { reactionMs: 600, aimErrorDeg: 35, edgeSense: 1,   ignorePowerup: 0.6, positionChance: 0,   dodgeChance: 0 },
-    medium: { reactionMs: 300, aimErrorDeg: 15, edgeSense: 2,   ignorePowerup: 0.3, positionChance: 0.5, dodgeChance: 0.3 },
+    easy:   { reactionMs: 600, aimErrorDeg: 35, edgeSense: 1.5, ignorePowerup: 0.6, positionChance: 0,   dodgeChance: 0 },
+    medium: { reactionMs: 300, aimErrorDeg: 15, edgeSense: 3,   ignorePowerup: 0.3, positionChance: 0.5, dodgeChance: 0.3 },
     hard:   { reactionMs: 120, aimErrorDeg: 5,  edgeSense: 3.5, ignorePowerup: 0,   positionChance: 1,   dodgeChance: 0.7 },
   },
 };
@@ -191,7 +193,7 @@ export const SCENARIOS = {
     bloom: false,
   },
   frozen: {
-    physics: { FRICTION: 0.94 },  // GDD: chão escorregadio
+    physics: { FRICTION: 0.93 },  // GDD: chão escorregadio (0,94 encerrava a rodada em ~20 s)
     sky: ['#6FA3D8', '#123563'],
     ground: '#DDEFF8',
     fog: { color: '#0A2142', near: 40, far: 130 },
@@ -263,6 +265,11 @@ export const CAMERA = {
 export const FX = {
   HIT_STOP_MS: 50,            // GDD
   SHAKE_HIT: { duration: 0.15, strength: 0.25 },  // GDD: 0,15 s; força definida
+  // definido: quando o empurrão envolve o seu bicho, o tranco é mais forte e a pausa mais longa
+  SHAKE_HIT_ME: { duration: 0.22, strength: 0.45 },
+  HIT_STOP_ME_MS: 80,
+  TRAIL_EVERY_MS: 28,         // definido: rastro colorido do dash, um sopro a cada 28 ms
+  FEED_MAX: 4,                // definido: derrubadas listadas no canto
   SHAKE_RING: { duration: 0.3, strength: 0.1 },   // GDD: tremor leve
   SHAKE_BOMB: { duration: 0.4, strength: 0.5 },   // GDD: tremor forte
   DASH_STRETCH: 0.2,          // GDD: estica 20 % por 0,15 s

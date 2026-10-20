@@ -168,6 +168,8 @@ const fx = createFx({
   hooks: {
     animal: (id) => animals.get(id),
     myId: () => myId,
+    player: (id) => lobby?.players.find((p) => p.id === id),
+    color: (id) => colorOf(lobby?.players.find((p) => p.id === id)),
     hitStop: (ms) => (freezeUntil = performance.now() + ms),
     wasLocalDash: (id) => id === myId && performance.now() - localDashAt < 400,
     emoteBubble: (id, text, seconds) => animals.get(id)?.showEmote(text, seconds),
@@ -400,6 +402,7 @@ net.on(MSG.ROUND, ({ round, scenario }) => {
   clearBoxes();
   for (const a of animals.values()) a.resetPose();
   ui.hideScoreboard();
+  ui.clearFeed();
   ui.showGame();
   ui.scores(lobby, wins);
   input.setEnabled(true);
@@ -720,6 +723,7 @@ function frame(now) {
         present.add(sp.id);
         const p = sp.id === myId && sp.st !== ST.OUT ? selfPose(sp, now, dt) : sp;
         a.apply(p, animDt);
+        if (p.st === ST.DASHING && !frozen) fx.trail(sp.id, a.root.position.x, a.root.position.z, colorOf(lobby?.players.find((q) => q.id === sp.id)));
         if (a.pu !== p.pu) {
           a.pu = p.pu;
           if (p.pu) a.showIcon(STR.powerupIcons[p.pu]);
@@ -733,7 +737,7 @@ function frame(now) {
     for (const a of animals.values()) a.mixer?.update(dt);
     // Menu: o bicho fica ao lado do painel (em pé, de frente, com o nome em cima)
     const wide = innerWidth > innerHeight * 1.1;
-    preview?.apply({ x: wide ? -1.3 : 0, z: wide ? 0.4 : -2.4, dir: Math.sin(now / 1500) * 0.5, vx: 0, vz: 0, st: ST.ALIVE, dashCd: 0, pu: null }, dt);
+    preview?.apply({ x: wide ? -1.3 : 0, z: wide ? 1.4 : -2.4, dir: Math.sin(now / 1500) * 0.5, vx: 0, vz: 0, st: ST.ALIVE, dashCd: 0, pu: null }, dt);
   }
 
   for (const m of boxes.values()) m.rotation.y += dt * 1.8;

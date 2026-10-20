@@ -1,7 +1,7 @@
 // HUD, lobby, placar, pódio e emotes. HTML por cima do canvas.
 
 import gsap from 'gsap';
-import { ANIMALS, PLAYER_COLORS, BOTS, ROOM, MATCH, AWARDS } from '../../shared/constants.js';
+import { ANIMALS, PLAYER_COLORS, BOTS, ROOM, MATCH, AWARDS, FX } from '../../shared/constants.js';
 import { PHASE } from '../../shared/messages.js';
 import { STR } from './strings.js';
 
@@ -94,6 +94,8 @@ export function createUI(handlers) {
       <div class="hud-scores"></div>
       <div class="hud-emotes">${STR.emotes.map((e, i) => `<span><kbd>${i + 1}</kbd>${esc(e)}</span>`).join('')}</div>
       <div class="hud-spectating outlined" hidden>${STR.spectating}</div>
+      <ul class="hud-feed"></ul>
+      <div class="hurt-flash"></div>
     </section>
 
     <div class="center-text outlined"></div>
@@ -353,6 +355,33 @@ export function createUI(handlers) {
         return `<div class="award"><div class="award-name">${STR.awards[key]}</div><div class="award-who">${who}</div><div class="award-hint">${STR.awardHints[key]}</div></div>`;
       }).join('');
       gsap.fromTo(root.querySelectorAll('.award'), { y: 30, opacity: 0 }, { y: 0, opacity: 1, stagger: 0.12, duration: 0.4, delay: 0.6, ease: 'back.out(2)' });
+    },
+
+    // Lista de derrubadas no canto: "Fulano knocked off Ciclano" (some depois de 4 s)
+    feed(victim, killer, myId) {
+      const list = $('.hud-feed', root);
+      const li = document.createElement('li');
+      li.className = 'outlined';
+      if (myId && (victim?.id === myId || killer?.id === myId)) li.classList.add('mine');
+      const who = (p) => `<span class="name" style="color:${colorOf(p)}">${esc(displayName(p))}</span>`;
+      li.innerHTML = killer
+        ? `${who(killer)} <span class="feed-verb">${STR.feedKo}</span> ${who(victim)}`
+        : `${who(victim)} <span class="feed-verb">${STR.feedSelf}</span>`;
+      list.prepend(li);
+      while (list.children.length > FX.FEED_MAX) list.lastElementChild.remove();
+      gsap.fromTo(li, { x: -30, opacity: 0 }, { x: 0, opacity: 1, duration: 0.25, ease: 'back.out(2)' });
+      gsap.to(li, { opacity: 0, duration: 0.4, delay: 4, onComplete: () => li.remove() });
+    },
+
+    clearFeed() {
+      $('.hud-feed', root).replaceChildren();
+    },
+
+    // Borda vermelha piscando quando o seu bicho cai
+    hurtFlash() {
+      const el = $('.hurt-flash', root);
+      gsap.killTweensOf(el);
+      gsap.fromTo(el, { opacity: 1 }, { opacity: 0, duration: 0.7, ease: 'power2.in' });
     },
 
     toast,

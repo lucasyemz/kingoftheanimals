@@ -124,6 +124,8 @@ export const STR = {
   knockedOut: (name, n) => `${name} knocked out ${n}`,
   fellAlone: (name) => `${name} fell off alone`,
   selfKo: 'Self-KO',
+  feedKo: 'knocked off',     // "Turbo Duck knocked off Lucas"
+  feedSelf: 'fell off',      // "Lucas fell off"
   kingslayerBanner: 'Kingslayer!',
   longLiveKing: 'Long live the King!',
   kingStreak: (n) => `×${n}`,

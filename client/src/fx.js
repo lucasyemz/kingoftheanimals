@@ -108,6 +108,36 @@ export function createFx({ world, ui, hooks }) {
     return ps;
   }
 
+  // Onda de choque em anel no chão (bomba, empurrão com dash)
+  function shockwave(x, z, color, { size = 3.2, duration = 0.45, opacity = 1 } = {}) {
+    const ring = new THREE.Mesh(
+      new THREE.RingGeometry(0.8, 1, 48).rotateX(-Math.PI / 2),
+      new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthWrite: false }),
+    );
+    ring.position.set(x, 0.1, z);
+    world.scene.add(ring);
+    gsap.to(ring.scale, { x: size, z: size, duration, ease: 'power2.out' });
+    gsap.to(ring.material, {
+      opacity: 0,
+      duration,
+      ease: 'power1.in',
+      onComplete: () => {
+        ring.removeFromParent();
+        ring.geometry.dispose();
+        ring.material.dispose();
+      },
+    });
+  }
+
+  // Rastro do dash: chamado a cada frame enquanto o bicho está em dash
+  const lastTrail = new Map();
+  function trail(id, x, z, color) {
+    const now = performance.now();
+    if (now - (lastTrail.get(id) ?? 0) < FX.TRAIL_EVERY_MS) return;
+    lastTrail.set(id, now);
+    burst(x, 0.45, z, { tex: 'circle', additive: true, count: 3, life: [0.2, 0.35], speed: [0, 0.3], size: [0.35, 0.6], color, radius: 0.25 });
+  }
+
   // ---------- Áudio (Howler) ----------
 
   function sound(key, { rate, volume = 0.8 } = {}) {
@@ -219,16 +249,27 @@ export function createFx({ world, ui, hooks }) {
     },
 
     [EVENT.DASH_HIT]: ({ id, target, x, z }) => {
+      const mine = isMe(id) || isMe(target);
       sound('boing', { rate: rand(...FX.BOING_RATE), volume: 0.9 });
-      hooks.hitStop(FX.HIT_STOP_MS);
-      world.shakeCamera(FX.SHAKE_HIT);
+      hooks.hitStop(mine ? FX.HIT_STOP_ME_MS : FX.HIT_STOP_MS);
+      world.shakeCamera(mine ? FX.SHAKE_HIT_ME : FX.SHAKE_HIT);
+      const color = hooks.color(id);
       burst(x, 0.9, z, { tex: 'star', additive: true, count: 10, life: [0.3, 0.6], speed: [2, 4], size: [0.25, 0.45], color: '#ffe066' });
+      burst(x, 0.7, z, { tex: 'spark', additive: true, count: 14, life: [0.15, 0.35], speed: [5, 9], size: [0.15, 0.3], color });
+      shockwave(x, z, color, { size: 2, duration: 0.3, opacity: 0.85 });
       animal(target)?.squash();
-      if (isMe(id) || isMe(target)) hooks.vibrate?.(40);
+      if (mine) hooks.vibrate?.(40);
     },
 
-    [EVENT.FALL]: ({ id, x, z }) => {
+    [EVENT.FALL]: ({ id, by, x, z }) => {
       sound('scream', { rate: rand(...FX.VOICE_RATE) });
+      ui.feed(hooks.player(id), by ? hooks.player(by) : null, hooks.myId());
+      if (isMe(id)) {
+        ui.hurtFlash();
+        hooks.vibrate?.(150);
+      } else if (isMe(by)) {
+        sound('ding', { volume: 0.5, rate: 1.3 });
+      }
       // poeira na beirada de onde caiu
       burst(x, 0, z, { tex: 'smoke', count: 12, life: [0.4, 0.8], speed: [1, 2.5], size: [0.4, 0.8], color: '#e8dcc8', radius: 0.5 });
       const a = animal(id);
@@ -281,15 +322,7 @@ export function createFx({ world, ui, hooks }) {
     [EVENT.PUSH_BOMB]: ({ x, z }) => {
       sound('explosion', { volume: 1 });
       world.shakeCamera(FX.SHAKE_BOMB);
-      // onda de choque em anel
-      const ring = new THREE.Mesh(
-        new THREE.RingGeometry(0.8, 1, 48).rotateX(-Math.PI / 2),
-        new THREE.MeshBasicMaterial({ color: '#ffd166', transparent: true, depthWrite: false }),
-      );
-      ring.position.set(x, 0.1, z);
-      world.scene.add(ring);
-      gsap.to(ring.scale, { x: 3.2, z: 3.2, duration: 0.45, ease: 'power2.out' });
-      gsap.to(ring.material, { opacity: 0, duration: 0.45, ease: 'power1.in', onComplete: () => ring.removeFromParent() });
+      shockwave(x, z, '#ffd166');
       burst(x, 0.5, z, { tex: 'spark', additive: true, count: 26, life: [0.3, 0.7], speed: [4, 8], size: [0.3, 0.6], color: '#ff9f1c' });
     },
 
@@ -344,7 +377,7 @@ export function createFx({ world, ui, hooks }) {
   }
 
   return {
-    load, handle, update, sound, playMusic, setAmbient, burst,
+    load, handle, update, sound, playMusic, setAmbient, burst, trail,
     localDash(a) {
       sound('whoosh', { volume: 0.6, rate: rand(0.9, 1.15) });
       a.dashStretch();

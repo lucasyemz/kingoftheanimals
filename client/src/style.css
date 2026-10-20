@@ -1051,3 +1051,54 @@ body.mobile .hud-emotes {
     height: 22vh;
   }
 }
+
+/* ---------- Derrubadas no canto e flash de dano ---------- */
+
+.hud-feed {
+  position: absolute;
+  top: calc(max(12px, env(safe-area-inset-top)) + 64px);
+  left: 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 4px;
+  justify-items: start;
+  font-size: 15px;
+  pointer-events: none;
+}
+
+.hud-feed li {
+  background: rgb(0 0 0 / 0.35);
+  border-radius: 8px;
+  padding: 3px 10px;
+  white-space: nowrap;
+  --outline: 3px;
+}
+
+.hud-feed li.mine {
+  background: rgb(0 0 0 / 0.55);
+  box-shadow: inset 0 0 0 2px rgb(255 255 255 / 0.7);
+}
+
+.hud-feed .feed-verb {
+  color: #fff;
+  opacity: 0.85;
+  font-size: 0.85em;
+  margin: 0 4px;
+}
+
+.hurt-flash {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  box-shadow: inset 0 0 120px 30px rgb(230 57 70 / 0.75);
+}
+
+@media (max-height: 500px) {
+  .hud-feed {
+    top: calc(max(8px, env(safe-area-inset-top)) + 48px);
+    font-size: 12px;
+  }
+}
