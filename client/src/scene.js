@@ -8,8 +8,11 @@ import { EffectComposer, RenderPass, EffectPass, BloomEffect } from 'postprocess
 import gsap from 'gsap';
 import { ARENA, CAMERA, SCENARIOS, MOBILE } from '../../shared/constants.js';
 import { seeded, rockWallGeometry, canyon, rockColumn, abyssBottom } from './scenery.js';
+import { settings } from './settings.js';
 
 export const IS_MOBILE = matchMedia('(pointer: coarse)').matches;
+// Gráfico leve: sem sombra, sem bloom, metade dos props e partículas. Automático no celular.
+export const LOW_GFX = settings.graphics === 'low' || (settings.graphics === 'auto' && IS_MOBILE);
 
 const RING_COUNT = Math.round((ARENA.RADIUS - ARENA.MIN_RADIUS) / ARENA.RING_WIDTH);
 const WARNING_COLOR = new THREE.Color('#ff2a2a');
@@ -75,9 +78,9 @@ function placeholderProp(key) {
 }
 
 export function createWorld(canvas) {
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: !IS_MOBILE, powerPreference: 'high-performance' });
-  renderer.setPixelRatio(Math.min(devicePixelRatio, IS_MOBILE ? 1.5 : 2));
-  renderer.shadowMap.enabled = !IS_MOBILE || MOBILE.SHADOWS;
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: !LOW_GFX, powerPreference: 'high-performance' });
+  renderer.setPixelRatio(Math.min(devicePixelRatio, LOW_GFX ? 1.5 : 2));
+  renderer.shadowMap.enabled = !LOW_GFX || MOBILE.SHADOWS;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
 
@@ -160,11 +163,11 @@ export function createWorld(canvas) {
   const propModels = {};
   const tintedCache = {};
   const gltfLoader = new GLTFLoader();
-  const DETAIL = IS_MOBILE ? 0.5 : 1;
+  const DETAIL = LOW_GFX ? 0.5 : 1;
 
   // Pós-processamento (bloom só em Lava Pit e Neon Night, nunca no celular)
   let composer = null;
-  if (!IS_MOBILE || MOBILE.BLOOM) {
+  if (!LOW_GFX || MOBILE.BLOOM) {
     composer = new EffectComposer(renderer);
     composer.addPass(new RenderPass(scene, camera));
     composer.addPass(new EffectPass(camera, new BloomEffect({ intensity: 1.2, luminanceThreshold: 0.55, mipmapBlur: true })));
@@ -247,7 +250,7 @@ export function createWorld(canvas) {
     };
 
     if (d.walls) {
-      const c = canyon({ seed: id.length * 31 + 7, rock: d.rock, rim: d.rim, abyss: d.abyss, strata: d.strata, segs: IS_MOBILE ? 56 : 80 });
+      const c = canyon({ seed: id.length * 31 + 7, rock: d.rock, rim: d.rim, abyss: d.abyss, strata: d.strata, segs: LOW_GFX ? 56 : 80 });
       surround.add(c.mesh);
       // props no topo dos paredões dos lados e do fundo (na frente ficariam enormes, perto da câmera)
       placeProps(Math.round(80 * DETAIL), () => {

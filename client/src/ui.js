@@ -1,9 +1,10 @@
 // HUD, lobby, placar, pódio e emotes. HTML por cima do canvas.
 
 import gsap from 'gsap';
-import { ANIMALS, PLAYER_COLORS, BOTS, ROOM, MATCH, AWARDS, FX } from '../../shared/constants.js';
+import { ANIMALS, PLAYER_COLORS, BOTS, ROOM, MATCH, AWARDS, FX, MODES } from '../../shared/constants.js';
 import { PHASE } from '../../shared/messages.js';
 import { STR } from './strings.js';
+import { settings, saveSettings, stats } from './settings.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
@@ -37,17 +38,22 @@ export function createUI(handlers) {
         <button class="btn primary join-link" hidden></button>
         <div class="mode-row">
           <button class="btn mode solo"><span class="mode-name">${STR.singlePlayer}</span><span class="mode-hint">${STR.singlePlayerHint}</span></button>
+          <button class="btn mode quick"><span class="mode-name">${STR.quickPlay}</span><span class="mode-hint">${STR.quickPlayHint}</span></button>
           <button class="btn mode multi"><span class="mode-name">${STR.multiplayer}</span><span class="mode-hint">${STR.multiplayerHint}</span></button>
         </div>
-        <details class="code-entry">
-          <summary>${STR.haveCode}</summary>
-          <div class="join-row">
-            <input class="code" maxlength="${ROOM.CODE_LENGTH}" placeholder="${STR.roomCodePlaceholder}" autocomplete="off" spellcheck="false" />
-            <button class="btn join">${STR.joinRoom}</button>
-          </div>
-        </details>
+        <div class="menu-foot">
+          <details class="code-entry">
+            <summary>${STR.haveCode}</summary>
+            <div class="join-row">
+              <input class="code" maxlength="${ROOM.CODE_LENGTH}" placeholder="${STR.roomCodePlaceholder}" autocomplete="off" spellcheck="false" />
+              <button class="btn join">${STR.joinRoom}</button>
+            </div>
+          </details>
+          <button class="link-btn how">${STR.howToPlay}</button>
+        </div>
         <div class="error" aria-live="polite"></div>
       </div>
+      <div class="home-stats" aria-label="${STR.statsTitle}"></div>
     </section>
 
     <section class="screen lobby" hidden>
@@ -61,12 +67,20 @@ export function createUI(handlers) {
             <span class="field-label">${STR.room}</span>
             <strong class="code-text outlined"></strong>
             <button class="btn copy">${STR.copyLink}</button>
+            <button class="btn whatsapp">${STR.whatsapp}</button>
           </div>
           <div class="hint invite-hint">${STR.inviteHint}</div>
         </div>
         <div class="field-label">${STR.players}</div>
         <ul class="player-list"></ul>
         <div class="host-controls">
+          <div class="setting mode-setting">
+            <span class="field-label">${STR.mode}</span>
+            <div class="segmented">
+              ${MODES.map((m) => `<button class="btn small game-mode" data-mode="${m}">${STR.modes[m]}</button>`).join('')}
+            </div>
+          </div>
+          <div class="hint mode-hint-text"></div>
           <div class="setting">
             <span class="field-label">${STR.bots}</span>
             <div class="stepper">
@@ -85,6 +99,7 @@ export function createUI(handlers) {
           <div class="hint start-hint"></div>
         </div>
         <div class="guest-note"></div>
+        <div class="hint auto-start" hidden></div>
       </div>
     </section>
 
@@ -95,6 +110,9 @@ export function createUI(handlers) {
       <div class="hud-emotes">${STR.emotes.map((e, i) => `<span><kbd>${i + 1}</kbd>${esc(e)}</span>`).join('')}</div>
       <div class="hud-spectating outlined" hidden>${STR.spectating}</div>
       <ul class="hud-feed"></ul>
+      <div class="hud-objective outlined" hidden></div>
+      <div class="hud-hill" hidden></div>
+      <div class="tutorial-box" hidden><div class="tutorial-step outlined"></div><button class="btn small tutorial-skip">${STR.tutorial.skip}</button></div>
       <div class="hurt-flash"></div>
     </section>
 
@@ -121,6 +139,25 @@ export function createUI(handlers) {
       </div>
     </section>
 
+    <button class="icon-btn gear" aria-label="${STR.settings}" title="${STR.settings}">⚙</button>
+    <section class="overlay settings-modal" hidden>
+      <div class="panel settings-panel">
+        <strong class="settings-title">${STR.settings}</strong>
+        <label class="slider"><span>${STR.music}</span><input type="range" class="vol-music" min="0" max="1" step="0.05" /></label>
+        <label class="slider"><span>${STR.effects}</span><input type="range" class="vol-sfx" min="0" max="1" step="0.05" /></label>
+        <label class="check"><input type="checkbox" class="mute" /> <span>${STR.mute}</span></label>
+        <div class="setting">
+          <span class="field-label">${STR.graphics}</span>
+          <div class="segmented">
+            ${Object.keys(STR.graphicsModes).map((g) => `<button class="btn small gfx" data-gfx="${g}">${STR.graphicsModes[g]}</button>`).join('')}
+          </div>
+        </div>
+        <div class="gfx-reload" hidden><span>${STR.graphicsReload}</span> <button class="btn small do-reload">${STR.reload}</button></div>
+        <button class="btn fullscreen">${STR.fullscreen}</button>
+        <div class="hint">${STR.muteHint}</div>
+        <button class="btn primary close-settings">${STR.close}</button>
+      </div>
+    </section>
     <div class="toast"></div>
     <div class="rotate-hint"><div class="outlined">${STR.rotatePhone}</div></div>
   `;
@@ -131,6 +168,7 @@ export function createUI(handlers) {
     hud: $('.hud', root),
     scoreboard: $('.scoreboard', root),
     podium: $('.podium', root),
+    settings: $('.settings-modal', root),
   };
 
   // ---------- Home ----------
@@ -159,6 +197,8 @@ export function createUI(handlers) {
   const homeData = () => ({ nickname: nickInput.value.trim(), animal });
   $('.solo', root).addEventListener('click', () => handlers.onSolo(homeData()));
   $('.multi', root).addEventListener('click', () => handlers.onMulti(homeData()));
+  $('.quick', root).addEventListener('click', () => handlers.onQuick(homeData()));
+  $('.how', root).addEventListener('click', () => handlers.onTutorial(homeData()));
   $('.join-link', root).addEventListener('click', () => handlers.onJoin({ ...homeData(), code: linkCode }));
   $('.join', root).addEventListener('click', () => handlers.onJoin({ ...homeData(), code: codeInput.value.trim().toUpperCase() }));
   codeInput.addEventListener('input', () => (codeInput.value = codeInput.value.toUpperCase().replace(/[^A-Z]/g, '')));
@@ -177,6 +217,50 @@ export function createUI(handlers) {
   // ---------- Lobby ----------
   let lobbyState = null;
   $('.copy', root).addEventListener('click', () => handlers.onCopyLink());
+  $('.whatsapp', root).addEventListener('click', () => handlers.onWhatsApp());
+  root.querySelectorAll('.game-mode').forEach((b) => b.addEventListener('click', () => handlers.onSettings({ mode: b.dataset.mode })));
+  $('.tutorial-skip', root).addEventListener('click', () => handlers.onTutorialSkip());
+
+  // ---------- Configurações ----------
+  const settingsEl = $('.settings-modal', root);
+  const volMusic = $('.vol-music', root);
+  const volSfx = $('.vol-sfx', root);
+  const muteBox = $('.mute', root);
+  const startGfx = settings.graphics;
+  function syncSettings() {
+    volMusic.value = settings.music;
+    volSfx.value = settings.sfx;
+    muteBox.checked = settings.muted;
+    root.querySelectorAll('.gfx').forEach((b) => b.classList.toggle('selected', b.dataset.gfx === settings.graphics));
+    $('.gfx-reload', root).hidden = settings.graphics === startGfx;
+    $('.gear', root).classList.toggle('muted', settings.muted);
+  }
+  $('.gear', root).addEventListener('click', () => {
+    syncSettings();
+    settingsEl.hidden = false;
+  });
+  $('.close-settings', root).addEventListener('click', () => (settingsEl.hidden = true));
+  settingsEl.addEventListener('click', (e) => e.target === settingsEl && (settingsEl.hidden = true));
+  volMusic.addEventListener('input', () => {
+    saveSettings({ music: Number(volMusic.value) });
+    handlers.onVolume?.();
+  });
+  volSfx.addEventListener('input', () => saveSettings({ sfx: Number(volSfx.value) }));
+  volSfx.addEventListener('change', () => handlers.onVolume?.(true)); // toca um som de exemplo
+  muteBox.addEventListener('change', () => {
+    saveSettings({ muted: muteBox.checked });
+    handlers.onVolume?.();
+    syncSettings();
+  });
+  root.querySelectorAll('.gfx').forEach((b) => b.addEventListener('click', () => {
+    saveSettings({ graphics: b.dataset.gfx });
+    syncSettings();
+  }));
+  $('.do-reload', root).addEventListener('click', () => location.reload());
+  const fsBtn = $('.fullscreen', root);
+  fsBtn.hidden = !document.fullscreenEnabled;
+  fsBtn.addEventListener('click', () => handlers.onFullscreen?.());
+  syncSettings();
   $('.bots-minus', root).addEventListener('click', () => handlers.onSettings({ bots: (lobbyState?.bots ?? 0) - 1 }));
   $('.bots-plus', root).addEventListener('click', () => handlers.onSettings({ bots: (lobbyState?.bots ?? 0) + 1 }));
   root.querySelectorAll('.diff').forEach((b) => b.addEventListener('click', () => handlers.onSettings({ difficulty: b.dataset.diff })));
@@ -221,6 +305,10 @@ export function createUI(handlers) {
       joinLink.hidden = !linkCode;
       joinLink.textContent = STR.joinRoomCode(linkCode);
       $('.error', root).textContent = '';
+      const st = $('.home-stats', root);
+      st.hidden = !stats.rounds;
+      st.innerHTML = `<span class="stats-title">${STR.statsTitle}</span>` +
+        STR.statsLine(stats).map(([icon, n, label]) => `<span class="stat"><b>${icon} ${n}</b> ${label}</span>`).join('');
       if (!nickname && !matchMedia('(pointer: coarse)').matches) setTimeout(() => nickInput.focus(), 300);
     },
 
@@ -241,7 +329,13 @@ export function createUI(handlers) {
       lobbyState = lobby;
       only('lobby');
       const solo = mode === 'solo';
-      $('.lobby-title', root).textContent = solo ? STR.singlePlayer : STR.multiplayer;
+      $('.lobby-title', root).textContent = solo ? STR.singlePlayer : lobby.public ? STR.publicRoom : STR.multiplayer;
+      const gameMode = lobby.mode ?? 'classic';
+      root.querySelectorAll('.game-mode').forEach((b) => b.classList.toggle('selected', b.dataset.mode === gameMode));
+      $('.mode-hint-text', root).textContent = STR.modeHints[gameMode];
+      const auto = $('.auto-start', root);
+      auto.hidden = !lobby.public || lobby.autoStartIn == null;
+      auto.textContent = lobby.autoStartIn == null ? '' : STR.autoStart(Math.ceil(lobby.autoStartIn));
       $('.invite', root).hidden = solo;
       $('.code-text', root).textContent = lobby.code;
       const isHost = lobby.hostId === myId;
@@ -268,7 +362,7 @@ export function createUI(handlers) {
       const me = lobby.players.find((p) => p.id === myId);
       guest.textContent = me?.spectator
         ? STR.spectatorNote
-        : `${STR.waitingHost}  ${STR.bots}: ${lobby.bots} · ${STR.difficulties[lobby.difficulty]}`;
+        : `${STR.waitingHost}  ${STR.modes[gameMode]} · ${STR.bots}: ${lobby.bots} · ${STR.difficulties[lobby.difficulty]}`;
     },
 
     showGame() {
@@ -358,15 +452,15 @@ export function createUI(handlers) {
     },
 
     // Lista de derrubadas no canto: "Fulano knocked off Ciclano" (some depois de 4 s)
-    feed(victim, killer, myId) {
+    feed(victim, killer, myId, why = null) {
       const list = $('.hud-feed', root);
       const li = document.createElement('li');
       li.className = 'outlined';
       if (myId && (victim?.id === myId || killer?.id === myId)) li.classList.add('mine');
       const who = (p) => `<span class="name" style="color:${colorOf(p)}">${esc(displayName(p))}</span>`;
       li.innerHTML = killer
-        ? `${who(killer)} <span class="feed-verb">${STR.feedKo}</span> ${who(victim)}`
-        : `${who(victim)} <span class="feed-verb">${STR.feedSelf}</span>`;
+        ? `${who(killer)} <span class="feed-verb">${why === 'boom' ? STR.feedBoom : STR.feedKo}</span> ${who(victim)}`
+        : `${who(victim)} <span class="feed-verb">${why === 'boom' ? STR.feedBoom : STR.feedSelf}</span>`;
       list.prepend(li);
       while (list.children.length > FX.FEED_MAX) list.lastElementChild.remove();
       gsap.fromTo(li, { x: -30, opacity: 0 }, { x: 0, opacity: 1, duration: 0.25, ease: 'back.out(2)' });
@@ -375,6 +469,34 @@ export function createUI(handlers) {
 
     clearFeed() {
       $('.hud-feed', root).replaceChildren();
+    },
+
+    // Texto do objetivo do modo (bomba, colina) logo abaixo do relógio
+    objective(text, kind = '') {
+      const el = $('.hud-objective', root);
+      el.hidden = !text;
+      if (!text) return;
+      el.textContent = text;
+      el.className = `hud-objective outlined ${kind}`;
+    },
+
+    // Rei da colina: barras de quem está mais perto de vencer
+    hill(rows, contested) {
+      const el = $('.hud-hill', root);
+      el.hidden = !rows;
+      if (!rows) return;
+      el.innerHTML = `<div class="hill-title outlined">${STR.hillTitle}${contested ? ` · <span class="contested">${STR.hillContested}</span>` : ''}</div>` +
+        rows.map(({ p, v, me }) => `<div class="hill-row${me ? ' mine' : ''}"><span class="name outlined" style="color:${colorOf(p)}">${esc(displayName(p))}</span><span class="bar"><i style="width:${Math.round(v * 100)}%;background:${colorOf(p)}"></i></span></div>`).join('');
+    },
+
+    tutorialStep(text) {
+      const box = $('.tutorial-box', root);
+      box.hidden = !text;
+      if (!text) return;
+      const el = $('.tutorial-step', root);
+      if (el.textContent === text) return;
+      el.textContent = text;
+      gsap.fromTo(el, { scale: 0.7, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.35, ease: 'back.out(2)' });
     },
 
     // Borda vermelha piscando quando o seu bicho cai

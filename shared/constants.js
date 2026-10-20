@@ -111,6 +111,49 @@ export const MATCH = {
   SAME_TICK_TIEBREAK: 'closestToCenter',
 };
 
+// ---------- Modos de jogo (escolhidos pelo anfitrião no lobby) ----------
+
+export const MODES = ['classic', 'potato', 'hill'];
+
+// Batata quente: alguém segura a bomba; encostar passa adiante. Quem segura quando
+// o pavio acaba explode (cai). Depois a bomba vai para outro, com pavio menor.
+export const POTATO = {
+  FIRST_DELAY: 2,             // segundos depois do GO até a primeira bomba
+  FUSE: 10,                   // pavio da primeira bomba
+  FUSE_STEP: 1.5,             // cada explosão encurta o próximo pavio
+  FUSE_MIN: 5,
+  PASS_COOLDOWN: 0.6,         // quem acabou de passar não recebe de volta na hora
+  HOLDER_SPEED: 1.12,         // quem segura corre 12 % mais (para conseguir passar)
+  BLAST: { radius: 3, impulse: 11, stun: 0.3 },
+  RING_INTERVAL_MULT: 1.5,    // anéis caem mais devagar: a bomba já elimina gente
+};
+
+// Rei da colina: ficar no círculo dourado do meio enche a barra (sozinho enche
+// inteiro; disputando, pela metade). Vence a rodada quem enche primeiro (ou o último
+// de pé, como no clássico).
+export const HILL = {
+  RADIUS: 2.4,
+  TARGET: 15,                 // segundos sozinho na colina para vencer
+  CONTESTED_RATE: 0.5,
+};
+
+// ---------- Partida rápida (salas públicas) ----------
+
+export const QUICK = {
+  AUTO_START: 20,             // segundos de espera antes de começar com bots
+  START_NOW_HUMANS: 4,        // com 4 pessoas começa na hora
+  MIN_TOTAL: 6,               // bots completam até 6 bichos
+  DIFFICULTY: 'medium',
+  REMATCH_AFTER: 12,          // pódio → lobby sozinho depois de 12 s
+};
+
+// ---------- Reconexão ----------
+
+export const RECONNECT = {
+  GRACE: 60,                  // segundos que a vaga fica guardada (um bot joga no lugar)
+  EMPTY_ROOM_GRACE: 30,       // sala sem ninguém fica aberta 30 s esperando alguém voltar
+};
+
 // ---------- Power-ups (GDD: tabela de Power-ups) ----------
 
 export const POWERUPS = {
@@ -191,6 +234,8 @@ export const SCENARIOS = {
     },
     particles: null,
     bloom: false,
+    // Vento: de tempos em tempos uma rajada empurra todo mundo numa direção (setas avisam)
+    hazard: { type: 'wind', every: 9, warning: 1.6, duration: 2.6, accel: 7 },
   },
   frozen: {
     physics: { FRICTION: 0.93 },  // GDD: chão escorregadio (0,94 encerrava a rodada em ~20 s)
@@ -206,6 +251,8 @@ export const SCENARIOS = {
     },
     particles: 'snow',
     bloom: false,
+    // Gelo que racha: um ponto trinca (aviso) e vira buraco por alguns segundos
+    hazard: { type: 'ice', every: 5, crack: 1.6, open: 5, radius: 1.3, max: 2, firstAt: 6 },
   },
   desert: {
     physics: {},
@@ -250,6 +297,8 @@ export const SCENARIOS = {
     },
     particles: 'stars',
     bloom: true,
+    // Barra de neon girando a partir do meio: empurra quem estiver no caminho
+    hazard: { type: 'sweeper', speed: 0.75, hub: 0.55, width: 0.3, push: 8, startAt: 3 },
   },
 };
 
@@ -290,4 +339,4 @@ export const MOBILE = {
 
 // ---------- Atalhos de debug (GDD: ligados fora de produção ou com ?debug=1) ----------
 
-export const DEBUG_PARAMS = ['debug', 'bots', 'difficulty', 'scenario', 'round', 'powerup', 'slowmo', 'nofall', 'offline'];
+export const DEBUG_PARAMS = ['debug', 'bots', 'difficulty', 'mode', 'scenario', 'round', 'powerup', 'slowmo', 'nofall', 'offline'];

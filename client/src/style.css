@@ -829,8 +829,8 @@ body.mobile .hud-emotes {
 
 .mode-row {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 8px;
 }
 
 .btn.mode {
@@ -845,12 +845,17 @@ body.mobile .hud-emotes {
   background: #4361ee;
 }
 
+.btn.mode.quick {
+  background: #f3722c;
+}
+
 .mode-name {
-  font-size: 21px;
+  font-size: 18px;
+  line-height: 1.1;
 }
 
 .mode-hint {
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 500;
   opacity: 0.9;
 }
@@ -1100,5 +1105,346 @@ body.mobile .hud-emotes {
   .hud-feed {
     top: calc(max(8px, env(safe-area-inset-top)) + 48px);
     font-size: 12px;
+  }
+}
+
+/* ---------- Menu: rodapé, estatísticas e configurações ---------- */
+
+.menu-foot {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: start;
+  gap: 4px 18px;
+}
+
+.menu-foot .code-entry {
+  flex: 1 1 auto;
+}
+
+.menu-foot .code-entry[open] {
+  flex-basis: 100%;
+}
+
+.link-btn {
+  font: inherit;
+  font-size: 14px;
+  color: #fff;
+  opacity: 0.85;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.link-btn:hover {
+  opacity: 1;
+}
+
+.home-stats {
+  position: absolute;
+  left: 16px;
+  bottom: 14px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 14px;
+  max-width: min(560px, 50vw);
+  padding: 8px 14px;
+  border-radius: var(--radius);
+  background: var(--panel);
+  font-size: 13px;
+  pointer-events: none;
+}
+
+.home-stats .stats-title {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  opacity: 0.75;
+  width: 100%;
+}
+
+.home-stats b {
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.icon-btn.gear {
+  position: absolute;
+  top: max(12px, env(safe-area-inset-top));
+  right: 16px;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 3px solid var(--ink);
+  background: var(--panel);
+  color: #fff;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: 0 3px 0 var(--ink);
+  z-index: 5;
+}
+
+.icon-btn.gear.muted::after {
+  content: '🔇';
+  position: absolute;
+  right: -8px;
+  bottom: -6px;
+  font-size: 14px;
+}
+
+body.in-game .icon-btn.gear {
+  display: none;
+}
+
+#ui .settings-modal {
+  background: rgb(29 27 47 / 0.45);
+  pointer-events: auto;
+  z-index: 10;
+}
+
+.settings-panel {
+  width: min(360px, 100%);
+}
+
+.settings-title {
+  font-size: 22px;
+}
+
+.slider {
+  display: grid;
+  grid-template-columns: 84px 1fr;
+  align-items: center;
+  gap: 10px;
+}
+
+.slider input {
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  accent-color: var(--accent);
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.check input {
+  width: 22px;
+  height: 22px;
+  min-height: 0;
+  accent-color: var(--accent);
+}
+
+.gfx-reload {
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.invite .btn.whatsapp {
+  background: #25d366;
+  color: var(--ink);
+}
+
+.mode-hint-text {
+  font-size: 13px;
+  opacity: 0.85;
+  margin-top: -4px;
+}
+
+.auto-start {
+  text-align: center;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+/* ---------- HUD dos modos ---------- */
+
+.hud-objective {
+  position: absolute;
+  top: calc(max(10px, env(safe-area-inset-top)) + 52px);
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 22px;
+  font-weight: 700;
+  white-space: nowrap;
+  --outline: 6px;
+}
+
+.hud-objective.danger {
+  color: #ffb3b8;
+  animation: pulse 0.5s ease-in-out infinite alternate;
+}
+
+@keyframes pulse {
+  from { transform: translateX(-50%) scale(1); }
+  to { transform: translateX(-50%) scale(1.08); }
+}
+
+.hud-hill {
+  position: absolute;
+  top: calc(max(10px, env(safe-area-inset-top)) + 52px);
+  left: 50%;
+  transform: translateX(-50%);
+  display: grid;
+  gap: 3px;
+  width: min(300px, 40vw);
+  font-size: 13px;
+  pointer-events: none;
+}
+
+.hill-title {
+  text-align: center;
+  font-size: 15px;
+  --outline: 4px;
+}
+
+.hill-title .contested {
+  color: #ffb3b8;
+}
+
+.hill-row {
+  display: grid;
+  grid-template-columns: 96px 1fr;
+  align-items: center;
+  gap: 6px;
+}
+
+.hill-row .name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: right;
+  --outline: 3px;
+}
+
+.hill-row .bar {
+  height: 10px;
+  border-radius: 6px;
+  background: rgb(0 0 0 / 0.4);
+  border: 2px solid var(--ink);
+  overflow: hidden;
+}
+
+.hill-row .bar i {
+  display: block;
+  height: 100%;
+}
+
+.hill-row.mine .bar {
+  border-color: #fff;
+}
+
+.tutorial-box {
+  position: absolute;
+  left: 50%;
+  bottom: 18%;
+  transform: translateX(-50%);
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  width: min(640px, 92vw);
+  pointer-events: none;
+}
+
+.tutorial-step {
+  font-size: clamp(22px, 3.4vw, 34px);
+  font-weight: 700;
+  text-align: center;
+}
+
+.tutorial-box .btn {
+  pointer-events: auto;
+}
+
+@media (max-height: 500px) {
+  .mode-name {
+    font-size: 15px;
+  }
+  .home-stats {
+    display: none;
+  }
+  .icon-btn.gear {
+    width: 38px;
+    height: 38px;
+    font-size: 18px;
+    top: 8px;
+    right: 8px;
+  }
+  .hud-objective,
+  .hud-hill {
+    top: 44px;
+  }
+}
+
+@media (orientation: portrait) {
+  .home-stats {
+    display: none;
+  }
+}
+
+/* Tutorial: sem relógio, placar nem lista de derrubadas */
+body.tutorial .hud-timer,
+body.tutorial .hud-scores,
+body.tutorial .hud-left,
+body.tutorial .hud-feed,
+body.tutorial .hud-emotes {
+  display: none;
+}
+
+/* Lobby mais alto (modos, WhatsApp): rola se não couber */
+.lobby-panel {
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+}
+
+.room-code .btn {
+  white-space: nowrap;
+}
+
+@media (max-height: 500px) {
+  #ui .lobby {
+    padding-bottom: 8px;
+  }
+  .lobby-panel {
+    max-height: calc(100vh - 16px);
+  }
+  .code-text {
+    font-size: 30px;
+  }
+  .invite-hint,
+  .mode-hint-text {
+    display: none;
+  }
+}
+
+.host-controls .mode-setting {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 560px) {
+  .room-code {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .room-code .code-text {
+    flex-basis: 100%;
+  }
+  .room-code .btn {
+    flex: 1;
+  }
+  .host-controls {
+    grid-template-columns: 1fr;
   }
 }

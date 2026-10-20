@@ -2,7 +2,7 @@
 // Prioridade (GDD): fugir da borda → pegar power-up → caçar → dar dash.
 // O tempo de reação é um atraso entre decidir e aplicar o input.
 
-import { PHYSICS, ARENA, BOTS } from '../shared/constants.js';
+import { PHYSICS, ARENA, BOTS, HILL } from '../shared/constants.js';
 import { PHASE, PLAYER_STATE as ST } from '../shared/messages.js';
 
 const DEG = Math.PI / 180;
@@ -24,6 +24,7 @@ export function createBrain(difficulty, rng = Math.random) {
 
 export function botThink(game, p, now) {
   const brain = p.bot;
+  if (brain.difficulty === 'dummy') return; // boneco do tutorial: fica parado
   while (brain.queue.length && brain.queue[0].at <= now) {
     const d = brain.queue.shift();
     p.inputX = d.x;
@@ -75,9 +76,72 @@ function decide(game, p, cfg, brain, now) {
   }
 
   // 1. Fugir da borda, olhando onde ele vai estar quando a decisão valer
+  //    (com vento soprando, a margem aumenta)
   const ahead = cfg.reactionMs / 1000 + BOTS.THINK_INTERVAL;
-  const rAhead = Math.hypot(p.x + p.vx * ahead, p.z + p.vz * ahead);
-  if (Math.max(r, rAhead) > edge - cfg.edgeSense) return toward(0, 0);
+  const ax = p.x + p.vx * ahead;
+  const az = p.z + p.vz * ahead;
+  const rAhead = Math.hypot(ax, az);
+  const windy = game.wind?.phase === 'blow' || game.wind?.phase === 'warn';
+  if (Math.max(r, rAhead) > edge - cfg.edgeSense - (windy ? 1.2 : 0)) return toward(0, 0);
+
+  // 1b. Fugir de buraco no gelo (trincando ou aberto)
+  for (const h of game.holes ?? []) {
+    const d = Math.hypot(ax - h.x, az - h.z);
+    if (d < h.r + cfg.edgeSense * 0.6) return { ...unit(p.x - h.x, p.z - h.z), dash: false };
+  }
+
+  // 1c. Modos
+  if (game.mode === 'potato' && game.potato) {
+    const holder = game.players.get(game.potato.id);
+    if (holder === p) {
+      // Com a bomba: corre atrás do mais perto e dá dash quando alcança
+      let near = null;
+      let nd = Infinity;
+      for (const q of others) {
+        const d = Math.hypot(q.x - p.x, q.z - p.z);
+        if (d < nd) {
+          nd = d;
+          near = q;
+        }
+      }
+      if (near) {
+        const dir = unit(near.x - p.x, near.z - p.z);
+        const err = (rng() * 2 - 1) * cfg.aimErrorDeg * DEG;
+        const dash = dashReady && nd < BOTS.DASH_RANGE + 1 && rng() < 0.6;
+        return { x: dir.x * Math.cos(err) - dir.z * Math.sin(err), z: dir.x * Math.sin(err) + dir.z * Math.cos(err), dash };
+      }
+    } else if (holder && standing(holder)) {
+      // Sem a bomba: foge de quem está com ela, puxando para o meio
+      const d = Math.hypot(p.x - holder.x, p.z - holder.z);
+      if (d < 5) {
+        const away = unit(p.x - holder.x, p.z - holder.z);
+        const mid = unit(-p.x, -p.z);
+        const w = Math.min(1, r / Math.max(edge, 1));
+        const dash = dashReady && d < 1.8 && rng() < cfg.dodgeChance;
+        return { ...unit(away.x + mid.x * w * 1.4, away.z + mid.z * w * 1.4), dash };
+      }
+    }
+  }
+  if (game.mode === 'hill') {
+    const inHill = (q) => Math.hypot(q.x, q.z) < HILL.RADIUS;
+    const rivals = others.filter(inHill);
+    if (!inHill(p)) {
+      // Vai para a colina; se tem alguém lá, empurra no caminho
+      const t = rivals[0];
+      if (t && dashReady && Math.hypot(t.x - p.x, t.z - p.z) < BOTS.DASH_RANGE + 1 && rng() < 0.5) {
+        return { ...unit(t.x - p.x, t.z - p.z), dash: true };
+      }
+      return toward(0, 0);
+    }
+    if (rivals.length) {
+      const t = rivals.sort((a, b) => Math.hypot(a.x - p.x, a.z - p.z) - Math.hypot(b.x - p.x, b.z - p.z))[0];
+      const dash = dashReady && Math.hypot(t.x - p.x, t.z - p.z) < BOTS.DASH_RANGE + 1;
+      return { ...unit(t.x - p.x, t.z - p.z), dash };
+    }
+    // Sozinho na colina: fica perto do meio
+    if (r > HILL.RADIUS * 0.5) return toward(0, 0);
+    return { x: 0, z: 0, dash: false };
+  }
 
   // 2. Power-up mais perto dele do que de qualquer outro
   let box = null;

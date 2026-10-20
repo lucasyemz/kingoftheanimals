@@ -93,6 +93,10 @@ export const STR = {
   singlePlayerHint: 'You vs bots',
   multiplayer: 'Multiplayer',
   multiplayerHint: 'Invite friends with a link',
+  quickPlay: 'Quick Play',
+  quickPlayHint: 'Join anyone online',
+  howToPlay: 'How to play',
+  rejoin: (code) => `Rejoin match ${code}`,
   joinRoomCode: (code) => `Join room ${code}`,
   haveCode: 'Have a room code?',
   joinRoom: 'Join',
@@ -102,10 +106,22 @@ export const STR = {
 
   // Lobby
   room: 'Room',
-  copyLink: 'Copy invite link',
+  copyLink: 'Copy link',
   linkCopied: 'Link copied! Send it to your friends.',
   inviteHint: 'Send the link to your friends. They join right here.',
   inviteText: 'Come play King of The Animals with me!',
+  inviteMessage: (code, url) => `👑 Come play King of The Animals with me! Room ${code}: ${url}`,
+  whatsapp: 'WhatsApp',
+  mode: 'Mode',
+  modes: { classic: 'Classic', potato: 'Hot Potato', hill: 'King of the Hill' },
+  modeHints: {
+    classic: 'Last one standing wins the round',
+    potato: 'Pass the bomb by bumping into someone. Don\'t be holding it when it blows!',
+    hill: 'Stand in the golden circle alone. First to fill the bar wins',
+  },
+  publicRoom: 'Public match',
+  autoStart: (s) => `Starting in ${s}s — bots fill empty spots`,
+  waitingPlayers: 'Looking for players…',
   players: 'Players',
   bots: 'Bots',
   difficulty: 'Difficulty',
@@ -129,6 +145,13 @@ export const STR = {
   kingslayerBanner: 'Kingslayer!',
   longLiveKing: 'Long live the King!',
   kingStreak: (n) => `×${n}`,
+  potatoYou: 'You have the bomb! Bump someone!',
+  potatoBoom: (name) => `${name} blew up!`,
+  feedBoom: 'blew up',
+  hillTitle: 'Hill',
+  hillContested: 'Contested!',
+  windWarning: 'Wind incoming!',
+  iceCrack: 'The ice is cracking!',
   winsToGo: 'First to 3 wins',
 
   // Pódio
@@ -142,6 +165,40 @@ export const STR = {
     badNickname: 'Type a name first',
     badAnimal: 'Pick an animal',
     disconnected: 'Connection lost — reconnecting…',
+    reconnected: 'Back in the match!',
+  },
+
+  // Configurações
+  settings: 'Settings',
+  music: 'Music',
+  effects: 'Effects',
+  mute: 'Mute all',
+  graphics: 'Graphics',
+  graphicsModes: { auto: 'Auto', high: 'High', low: 'Light' },
+  graphicsReload: 'Graphics change after a reload. Reload now?',
+  reload: 'Reload',
+  fullscreen: 'Fullscreen',
+  close: 'Close',
+  muteHint: 'Press M to mute anytime',
+
+  // Estatísticas
+  statsTitle: 'Your stats',
+  statsLine: (s) => [
+    ['🏆', s.matchWins, 'crowns'],
+    ['⭐', s.roundWins, 'rounds won'],
+    ['💥', s.kos, 'knockouts'],
+    ['🎮', s.matches, 'matches'],
+  ],
+
+  // Tutorial
+  tutorial: {
+    title: 'How to play',
+    move: 'Move with WASD / arrows (or the joystick)',
+    dash: 'Press SPACE to dash (or the DASH button)',
+    push: 'Dash into the dummy to push it off!',
+    done: 'You\'re ready! 👑',
+    skip: 'Skip',
+    dummy: 'Dummy',
   },
 
   rotatePhone: 'Turn your phone sideways to play',

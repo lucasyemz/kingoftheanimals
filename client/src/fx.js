@@ -14,9 +14,11 @@ import confetti from 'canvas-confetti';
 import { ARENA, FX, MOBILE, EMOTES, PLAYER_COLORS } from '../../shared/constants.js';
 import { EVENT } from '../../shared/messages.js';
 import { STR } from './strings.js';
-import { IS_MOBILE } from './scene.js';
+import { LOW_GFX } from './scene.js';
+import { settings } from './settings.js';
 
-const PARTICLE_SCALE = IS_MOBILE ? MOBILE.PARTICLE_SCALE : 1;
+const MUSIC_VOLUME = 0.35;
+const PARTICLE_SCALE = LOW_GFX ? MOBILE.PARTICLE_SCALE : 1;
 const rand = (a, b) => a + Math.random() * (b - a);
 
 // Textura de reserva: bolinha suave desenhada num canvas
@@ -145,7 +147,7 @@ export function createFx({ world, ui, hooks }) {
     if (!list?.length) return;
     const howl = list[Math.floor(Math.random() * list.length)];
     const id = howl.play();
-    howl.volume(volume, id);
+    howl.volume(volume * settings.sfx, id);
     if (rate) howl.rate(rate, id);
   }
 
@@ -157,9 +159,17 @@ export function createFx({ world, ui, hooks }) {
     if (m) {
       m.volume(0);
       m.play();
-      m.fade(0, 0.35, 800);
+      m.fade(0, MUSIC_VOLUME * settings.music, 800);
     }
   }
+
+  // Depois de mexer nas configurações: mudo e volume da música tocando agora
+  function applyVolume() {
+    Howler.mute(settings.muted);
+    const m = music[currentMusic];
+    if (m?.playing()) m.volume(MUSIC_VOLUME * settings.music);
+  }
+  applyVolume();
 
   // ---------- Carregar assets do manifesto ----------
 
@@ -261,12 +271,13 @@ export function createFx({ world, ui, hooks }) {
       if (mine) hooks.vibrate?.(40);
     },
 
-    [EVENT.FALL]: ({ id, by, x, z }) => {
+    [EVENT.FALL]: ({ id, by, x, z, why }) => {
       sound('scream', { rate: rand(...FX.VOICE_RATE) });
-      ui.feed(hooks.player(id), by ? hooks.player(by) : null, hooks.myId());
+      ui.feed(hooks.player(id), by ? hooks.player(by) : null, hooks.myId(), why);
       if (isMe(id)) {
         ui.hurtFlash();
         hooks.vibrate?.(150);
+        hooks.fallZoom?.(x, z);
       } else if (isMe(by)) {
         sound('ding', { volume: 0.5, rate: 1.3 });
       }
@@ -355,6 +366,43 @@ export function createFx({ world, ui, hooks }) {
     [EVENT.LONG_LIVE_KING]: () => {
       ui.banner(STR.longLiveKing, 'gold');
     },
+
+    // ---------- Obstáculos e modos ----------
+
+    [EVENT.WIND]: ({ phase }) => {
+      if (phase === 'warn') {
+        sound('alarm', { volume: 0.35, rate: 1.4 });
+        ui.banner(STR.windWarning, '');
+      }
+      if (phase === 'blow') {
+        sound('whoosh', { volume: 0.9, rate: 0.6 });
+        world.shakeCamera(FX.SHAKE_RING);
+      }
+    },
+
+    [EVENT.ICE]: ({ phase, x, z, r }) => {
+      if (phase === 'crack') sound('rumble', { volume: 0.5, rate: 1.6 });
+      if (phase === 'open') {
+        sound('poof', { volume: 0.7, rate: 0.8 });
+        burst(x, 0.2, z, { tex: 'smoke', count: 14, life: [0.4, 0.8], speed: [1, 3], size: [0.3, 0.6], color: '#eaf6ff', radius: r * 0.8 });
+      }
+    },
+
+    [EVENT.POTATO]: ({ id, from }) => {
+      sound(from ? 'pop' : 'alarm', { volume: isMe(id) ? 0.9 : 0.5, rate: from ? 1.3 : 1 });
+      if (isMe(id)) {
+        hooks.vibrate?.(60);
+        animal(id)?.hop();
+      }
+    },
+
+    [EVENT.POTATO_BOOM]: ({ id, x, z }) => {
+      sound('explosion', { volume: 1 });
+      world.shakeCamera(isMe(id) ? FX.SHAKE_BOMB : FX.SHAKE_HIT_ME);
+      shockwave(x, z, '#ff6b35', { size: 3.4 });
+      burst(x, 0.8, z, { tex: 'spark', additive: true, count: 30, life: [0.3, 0.8], speed: [4, 9], size: [0.3, 0.7], color: '#ff9f1c' });
+      burst(x, 0.8, z, { tex: 'smoke', count: 16, life: [0.6, 1.2], speed: [1, 3], size: [0.8, 1.6], color: '#4a4040' });
+    },
   };
 
   function handle(ev) {
@@ -377,7 +425,7 @@ export function createFx({ world, ui, hooks }) {
   }
 
   return {
-    load, handle, update, sound, playMusic, setAmbient, burst, trail,
+    load, handle, update, sound, playMusic, setAmbient, burst, trail, applyVolume,
     localDash(a) {
       sound('whoosh', { volume: 0.6, rate: rand(0.9, 1.15) });
       a.dashStretch();

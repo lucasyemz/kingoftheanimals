@@ -5,8 +5,8 @@ import * as THREE from 'three';
 import { CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
 import gsap from 'gsap';
 import { io } from 'socket.io-client';
-import { NET, ANIMALS, MATCH, SCENARIOS, EMOTES, POWERUPS, PLAYER_COLORS, PHYSICS } from '../../shared/constants.js';
-import { MSG, PHASE, PLAYER_STATE as ST } from '../../shared/messages.js';
+import { NET, ANIMALS, MATCH, SCENARIOS, EMOTES, POWERUPS, PLAYER_COLORS, PHYSICS, HILL } from '../../shared/constants.js';
+import { MSG, PHASE, PLAYER_STATE as ST, EVENT } from '../../shared/messages.js';
 import { Game, movePlayer } from '../../server/game.js';
 import { STR } from './strings.js';
 import { createWorld, IS_MOBILE } from './scene.js';
@@ -14,6 +14,8 @@ import { createAnimal, loadAnimalModels } from './animals.js';
 import { createFx } from './fx.js';
 import { createInput } from './input.js';
 import { createUI, createLoading, displayName, colorOf } from './ui.js';
+import { createRules } from './rules.js';
+import { settings, saveSettings, addStats } from './settings.js';
 
 // ---------- Atalhos de debug (GDD: fora de produção ou com ?debug=1) ----------
 
@@ -129,6 +131,7 @@ const net = {
 
 const canvas = document.getElementById('game');
 const world = createWorld(canvas);
+const rules = createRules(world);
 const labels = new CSS2DRenderer({ element: document.getElementById('labels') });
 const resizeLabels = () => labels.setSize(innerWidth, innerHeight);
 addEventListener('resize', resizeLabels);
@@ -140,9 +143,19 @@ const boxes = new Map();   // pid → mesh
 let crownModel = null;
 
 const ui = createUI({
-  onSolo: (d) => join('solo', { ...d, code: null }),
+  // Primeira vez no Single Player: passa antes pelo tutorial
+  onSolo: (d) => (settings.tutorialDone ? join('solo', { ...d, code: null }) : startTutorial(d, 'solo')),
   onMulti: (d) => join('online', { ...d, code: null }),
+  onQuick: (d) => join('online', { ...d, code: null, quick: true }),
   onJoin: (d) => join('online', d),
+  onTutorial: (d) => startTutorial(d, 'menu'),
+  onTutorialSkip: () => finishTutorial(),
+  onWhatsApp: shareWhatsApp,
+  onVolume: (sample) => {
+    fx.applyVolume();
+    if (sample) fx.sound('ding', { volume: 0.8 });
+  },
+  onFullscreen: toggleFullscreen,
   onAnimal: (a) => {
     home.animal = a;
     showPreview();
@@ -152,8 +165,8 @@ const ui = createUI({
     preview?.setLabel(previewLabel());
   },
   onLeave: () => leaveToMenu(),
-  onSettings: (d) => net.emit(MSG.SETTINGS, { bots: lobby?.bots, difficulty: lobby?.difficulty, ...d }),
-  onStart: () => net.emit(MSG.START, { bots: lobby?.bots, difficulty: lobby?.difficulty }),
+  onSettings: (d) => net.emit(MSG.SETTINGS, { bots: lobby?.bots, difficulty: lobby?.difficulty, mode: lobby?.mode, ...d }),
+  onStart: () => net.emit(MSG.START, { bots: lobby?.bots, difficulty: lobby?.difficulty, mode: lobby?.mode }),
   onRematch: () => net.emit(MSG.REMATCH, {}),
   onCopyLink: copyLink,
   onClick: () => {
@@ -168,6 +181,12 @@ const fx = createFx({
   hooks: {
     animal: (id) => animals.get(id),
     myId: () => myId,
+    fallZoom: (x, z) => {
+      world.focusOn(x, z, 0.62, 0.25);
+      setTimeout(() => {
+        if (latest && (latest.phase === PHASE.PLAYING || latest.phase === PHASE.SUDDEN_DEATH)) world.focusOn(0, 0, 1, 0.6);
+      }, 1100);
+    },
     player: (id) => lobby?.players.find((p) => p.id === id),
     color: (id) => colorOf(lobby?.players.find((p) => p.id === id)),
     hitStop: (ms) => (freezeUntil = performance.now() + ms),
@@ -191,6 +210,7 @@ const input = createInput({
     if (me && a && me.st === ST.ALIVE && me.dashCd <= 0 && latest.phase !== PHASE.COUNTDOWN) {
       localDashAt = performance.now();
       fx.localDash(a); // GDD: mostrar o dash local na hora
+      if (tutorial.active && tutorial.moved) tutorial.dashed = true;
     }
   },
 });
@@ -218,7 +238,23 @@ const home = {
 
 const debugSuffix = () => (SHOW_DEBUG ? '&debug=1' : '');
 
-function join(mode, { nickname, animal, code }) {
+// Vaga na partida online, para voltar se a conexão cair ou a página recarregar
+const SESSION_KEY = 'kota.session';
+const session = {
+  get() {
+    try {
+      return JSON.parse(sessionStorage.getItem(SESSION_KEY) ?? 'null');
+    } catch {
+      return null;
+    }
+  },
+  set(v) {
+    if (v) sessionStorage.setItem(SESSION_KEY, JSON.stringify(v));
+    else sessionStorage.removeItem(SESSION_KEY);
+  },
+};
+
+function join(mode, { nickname, animal, code, quick = false, rejoin = null, tutorial: isTutorial = false }) {
   if (!nickname) return ui.needName();
   localStorage.setItem('kota.nick', nickname);
   localStorage.setItem('kota.animal', animal);
@@ -226,14 +262,21 @@ function join(mode, { nickname, animal, code }) {
   net.use(mode);
   const send = () => {
     myId = net.id; // o lobby pode chegar antes da resposta do join
-    net.emit(MSG.JOIN, { code, nickname, animal, debug: DEBUG_OPTS }, (res) => {
+    const debug = isTutorial ? { ...DEBUG_OPTS, tutorial: true } : DEBUG_OPTS;
+    net.emit(MSG.JOIN, { code, nickname, animal, debug, quick, rejoin }, (res) => {
       if (!res?.ok) {
         myId = null;
         net.leave();
+        session.set(null);
+        if (tutorial.active) tutorial.active = false;
         return ui.error(STR.errors[res?.error] ?? STR.errors.notFound);
       }
       myId = res.playerId;
-      if (mode === 'online') history.replaceState(null, '', `?room=${res.code}${debugSuffix()}`);
+      if (mode === 'online') {
+        history.replaceState(null, '', `?room=${res.code}${debugSuffix()}`);
+        session.set({ code: res.code, token: res.token });
+        if (res.rejoined) ui.toast(STR.errors.reconnected);
+      }
     });
   };
   // Online: espera o socket conectar para já saber o próprio id
@@ -251,6 +294,10 @@ function waitOnline(fn) {
 }
 
 function leaveToMenu() {
+  session.set(null);
+  tutorial.active = false;
+  ui.tutorialStep(null);
+  document.body.classList.remove('tutorial');
   net.leave();
   myId = null;
   lobby = null;
@@ -262,6 +309,62 @@ function leaveToMenu() {
 
 function inviteUrl() {
   return `${location.origin}${location.pathname}?room=${lobby?.code ?? ''}`;
+}
+
+function shareWhatsApp() {
+  const text = STR.inviteMessage(lobby?.code ?? '', inviteUrl());
+  open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank', 'noopener');
+}
+
+function toggleFullscreen() {
+  if (document.fullscreenElement) return document.exitFullscreen?.();
+  document.documentElement.requestFullscreen?.().then(() => screen.orientation?.lock?.('landscape').catch(() => {})).catch(() => {});
+}
+
+// M: liga e desliga o som em qualquer tela
+addEventListener('keydown', (e) => {
+  if (e.code !== 'KeyM' || e.repeat || ['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName)) return;
+  saveSettings({ muted: !settings.muted });
+  fx.applyVolume();
+  ui.toast(settings.muted ? '🔇' : '🔊');
+});
+
+// ---------- Tutorial ----------
+// Uma partida local com um boneco parado: andar, dar dash e empurrar o boneco para fora.
+
+const tutorial = { active: false, then: 'menu', moved: 0, dashed: false, done: false };
+
+function startTutorial(d, then) {
+  if (!d.nickname) return ui.needName();
+  Object.assign(tutorial, { active: true, then, moved: 0, dashed: false, done: false, started: false });
+  document.body.classList.add('tutorial');
+  join('solo', { ...d, code: null, tutorial: true });
+}
+
+function finishTutorial() {
+  if (!tutorial.active) return;
+  saveSettings({ tutorialDone: true });
+  tutorial.active = false;
+  ui.tutorialStep(null);
+  document.body.classList.remove('tutorial');
+  net.leave();
+  myId = null;
+  lobby = null;
+  latest = null;
+  if (tutorial.then === 'solo') join('solo', { nickname: home.nickname, animal: home.animal, code: null });
+  else showHome();
+}
+
+function tutorialFrame(dt) {
+  if (!tutorial.active || !latest) return;
+  const me = latest.byId?.[myId];
+  if (me && (latest.phase === PHASE.PLAYING) && Math.hypot(me.vx, me.vz) > 2) tutorial.moved += dt;
+  let text = STR.tutorial.move;
+  if (tutorial.done) text = STR.tutorial.done;
+  else if (tutorial.moved > 0.6 && tutorial.dashed) text = STR.tutorial.push;
+  else if (tutorial.moved > 0.6) text = STR.tutorial.dash;
+  if (latest.phase === PHASE.COUNTDOWN) text = STR.tutorial.title;
+  ui.tutorialStep(text);
 }
 
 function copyLink() {
@@ -279,7 +382,7 @@ function copyLink() {
 function labelHtml(p) {
   const badge = p.bot ? `<span class="badge">${STR.botBadge}</span>` : '';
   const king = lobby && p.id === lobby.kingId && p.kingStreak > 1 ? `<span class="streak">${STR.kingStreak(p.kingStreak)}</span>` : '';
-  const name = String(displayName(p)).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+  const name = String(tutorial.active && p.bot ? STR.tutorial.dummy : displayName(p)).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
   return `<span class="tag" style="--c:${colorOf(p)}">${name}${badge}${king}</span>`;
 }
 
@@ -342,8 +445,31 @@ function clearPreview() {
 net.on('status', (status) => {
   debugInfo.status = STR.debug[status] ?? status;
   if (status === 'offline' && myId) ui.toast(STR.errors.disconnected);
-  if (status === 'online' && myId && net.id !== myId) {
-    // A conexão caiu e voltou com outro id: volta para o menu com o código da sala.
+  if (status === 'online' && myId && net.id !== myId && net.mode === 'online') {
+    // A conexão caiu e voltou: tenta pegar o bicho de volta na mesma sala
+    const sess = session.get();
+    if (sess?.token && lobby?.code === sess.code) {
+      states.length = 0;
+      clockOffset = null;
+      predict.me = null;
+      predict.history.length = 0;
+      net.emit(MSG.JOIN, { code: sess.code, nickname: home.nickname, animal: home.animal, rejoin: sess.token }, (res) => {
+        if (res?.ok) {
+          myId = res.playerId;
+          session.set({ code: res.code, token: res.token });
+          ui.toast(res.rejoined ? STR.errors.reconnected : STR.spectating);
+          return;
+        }
+        session.set(null);
+        home.code = sess.code;
+        myId = null;
+        lobby = null;
+        net.leave();
+        showHome();
+      });
+      return;
+    }
+    // Sem como voltar: menu com o código da sala.
     home.code = lobby?.code ?? home.code;
     myId = null;
     lobby = null;
@@ -357,12 +483,20 @@ net.on(MSG.LOBBY, (data) => {
   syncRoster();
   ui.scores(lobby, wins);
   if (data.phase === PHASE.LOBBY) {
+    if (tutorial.active) {
+      // Tutorial: começa direto, sem mostrar o lobby
+      if (data.hostId === myId && !tutorial.started) {
+        tutorial.started = true;
+        net.emit(MSG.START, { bots: 1 });
+      }
+      return;
+    }
     if (screen !== 'lobby') enterLobby();
     ui.showLobby(lobby, myId, net.mode);
     arrangeLobby();
     if (QUICK_BOTS !== null && !quickStarted && data.hostId === myId) {
       quickStarted = true;
-      net.emit(MSG.START, { bots: QUICK_BOTS, difficulty: QUICK_DIFFICULTY ?? lobby.difficulty });
+      net.emit(MSG.START, { bots: QUICK_BOTS, difficulty: QUICK_DIFFICULTY ?? lobby.difficulty, mode: params.get('mode') ?? undefined });
     }
   } else if (screen === 'home' || screen === 'lobby') {
     // Entrou com a partida rolando: assiste
@@ -386,8 +520,11 @@ function enterLobby() {
   fx.playMusic('lobby');
 }
 
-net.on(MSG.ROUND, ({ round, scenario }) => {
-  if (lobby) Object.assign(lobby, { round, scenario });
+net.on(MSG.ROUND, ({ round, scenario, mode }) => {
+  if (lobby) Object.assign(lobby, { round, scenario, mode: mode ?? lobby.mode });
+  rules.reset();
+  ui.objective(null);
+  ui.hill(null);
   screen = 'game';
   states.length = 0;
   clockOffset = null;
@@ -439,6 +576,14 @@ net.on(MSG.STATE, (s) => {
 });
 
 net.on(MSG.EVENT, (ev) => {
+  if (ev.type === EVENT.TUTORIAL && tutorial.active) {
+    tutorial.done = true;
+    setTimeout(finishTutorial, 2200);
+  }
+  if (ev.type === EVENT.FALL && !tutorial.active && myId && latest && latest.phase !== PHASE.ROUND_END) {
+    if (ev.by === myId) addStats({ kos: 1 });
+    if (ev.id === myId) addStats({ falls: 1 });
+  }
   // Os efeitos saem no mesmo atraso da imagem interpolada (os do próprio dash já saíram na hora)
   setTimeout(() => fx.handle(ev), interpDelay);
 });
@@ -468,6 +613,13 @@ function stepPredicted(inp) {
   pm.inputX = inp.x;
   pm.inputZ = inp.z;
   if (inp.dash) pm.dashBuffer = PHYSICS.DASH_BUFFER;
+  // Rajada de vento: o servidor empurra todo mundo; a previsão faz igual
+  const w = latest?.arena.wind;
+  const hz = SCENARIOS[lobby?.scenario]?.hazard;
+  if (w?.phase === 'blow' && hz?.type === 'wind' && PREDICTABLE.has(pm.st)) {
+    pm.vx += w.dx * hz.accel * NET.TICK_DT;
+    pm.vz += w.dz * hz.accel * NET.TICK_DT;
+  }
   movePlayer(pm, NET.TICK_DT, { control: true, friction: predictionFriction() });
   // ?nofall=1: o servidor segura na borda; a previsão faz o mesmo
   const r = Math.hypot(pm.x, pm.z);
@@ -491,7 +643,7 @@ function reconcile(s) {
     st: me.st, stT: me.stT ?? 0,
     dashCdMax: me.dashCdMax || PHYSICS.DASH_COOLDOWN,
     dashCd: (me.dashCd ?? 0) * (me.dashCdMax || PHYSICS.DASH_COOLDOWN),
-    dashBuffer: 0, pu: me.pu, puT: me.puT ?? 0, inputX: 0, inputZ: 0,
+    dashBuffer: 0, pu: me.pu, puT: me.puT ?? 0, inputX: 0, inputZ: 0, potato: !!me.potato,
   };
   for (const h of predict.history) stepPredicted(h);
   predict.prev = { x: predict.me.x, z: predict.me.z };
@@ -536,6 +688,11 @@ function selfPose(p, now, dt) {
 
 net.on(MSG.SCORE, (score) => {
   wins = score.wins ?? wins;
+  const playing = myId && lobby?.players.some((p) => p.id === myId && !p.spectator);
+  if (playing && score.kind === 'round') addStats({ rounds: 1, roundWins: score.winner === myId ? 1 : 0 });
+  if (playing && score.kind === 'match') {
+    addStats({ matches: 1, matchWins: score.champion === myId ? 1 : 0 });
+  }
   if (score.kind === 'round') {
     ui.scoreboard(score, lobby, MATCH.ROUND_END_SLOWMO * 1000 + NET.INTERP_DELAY_MS);
     setTimeout(() => ui.scores(lobby, wins), NET.INTERP_DELAY_MS);
@@ -663,7 +820,11 @@ function sampleState(renderT) {
   const k = Math.min(1, (renderT - a.t) / (b.t - a.t));
   return {
     ...b,
-    arena: { ...b.arena, radius: lerp(a.arena.radius, b.arena.radius, k) },
+    arena: {
+      ...b.arena,
+      radius: lerp(a.arena.radius, b.arena.radius, k),
+      sweep: typeof b.arena.sweep === 'number' && typeof a.arena.sweep === 'number' ? lerpAngle(a.arena.sweep, b.arena.sweep, k) : b.arena.sweep,
+    },
     players: b.players.map((pb) => {
       const pa = a.byId[pb.id];
       if (!pa || pa.st === ST.OUT) return pb;
@@ -688,6 +849,7 @@ if (SHOW_DEBUG) {
     render: () => ({ ...world.renderer.info.render }),
     predict: () => ({ me: predict.me && { x: predict.me.x, z: predict.me.z, st: predict.me.st }, hist: predict.history.length, view: { ...selfView } }),
     view: () => Object.fromEntries([...animals].map(([id, a]) => [id, [a.root.position.x, a.root.position.z]])),
+    crownPreview: () => preview?.setCrown(true),
   };
 }
 let frames = 0;
@@ -731,7 +893,12 @@ function frame(now) {
         }
       }
       for (const [id, a] of animals) if (!present.has(id)) a.root.visible = false;
-      if (latest) ui.hud(latest, lobby, myId);
+      rules.update(s, dt, { animals, colorOf, players: lobbyById() });
+      if (latest) {
+        ui.hud(latest, lobby, myId);
+        modeHud(s);
+      }
+      tutorialFrame(dt);
     }
   } else {
     for (const a of animals.values()) a.mixer?.update(dt);
@@ -754,6 +921,40 @@ function frame(now) {
     if (SHOW_DEBUG) {
       debugEl.textContent = `${debugInfo.status}\nfps ${debugInfo.fps} · ping ${debugInfo.ping} ms · tick ${debugInfo.tick}\n${net.transport} · phase ${latest?.phase ?? screen} · delay ${Math.round(interpDelay)} ms${predict.me ? ' · predicting' : ''}`;
     }
+  }
+}
+
+// ---------- HUD dos modos ----------
+
+let rosterCache = { src: null, map: {} };
+function lobbyById() {
+  if (rosterCache.src !== lobby?.players) rosterCache = { src: lobby?.players, map: Object.fromEntries((lobby?.players ?? []).map((p) => [p.id, p])) };
+  return rosterCache.map;
+}
+
+function modeHud(s) {
+  const players = lobbyById();
+  const pot = s.arena?.potato;
+  if (pot) {
+    const fuse = Math.ceil(pot.fuse);
+    if (pot.id === myId) ui.objective(`💣 ${STR.potatoYou} ${fuse}`, 'danger');
+    else ui.objective(`💣 ${displayName(players[pot.id])} · ${fuse}s`);
+  } else {
+    ui.objective(null);
+  }
+  const hill = s.arena?.hill;
+  if (hill) {
+    const rows = Object.entries(hill.scores)
+      .filter(([, v]) => v > 0)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+      .map(([id, v]) => ({ p: players[id], v: Math.min(1, v / HILL.TARGET), me: id === myId }));
+    if (myId && !rows.some((r) => r.me) && players[myId] && !players[myId].spectator) {
+      rows.push({ p: players[myId], v: Math.min(1, (hill.scores[myId] ?? 0) / HILL.TARGET), me: true });
+    }
+    ui.hill(rows, hill.contested);
+  } else {
+    ui.hill(null);
   }
 }
 
@@ -831,6 +1032,12 @@ async function boot() {
     fx.unlockAudio();
     if (screen === 'home' || screen === 'lobby') fx.playMusic('lobby');
   }, { once: true });
+
+  // Recarregou a página no meio de uma partida online: tenta voltar para o mesmo bicho
+  const sess = session.get();
+  if (home.code && sess?.code === home.code && sess.token && home.nickname) {
+    join('online', { nickname: home.nickname, animal: home.animal, code: home.code, rejoin: sess.token });
+  }
 
   // Atalhos: ?bots=7&difficulty=hard pula menu e lobby; ?offline=1 joga sozinho
   if (QUICK_BOTS !== null) {

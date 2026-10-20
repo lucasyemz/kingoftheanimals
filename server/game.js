@@ -4,10 +4,11 @@
 
 import {
   NET, ROOM, PHYSICS, ARENA, MATCH, POWERUPS, BOTS, EMOTES,
-  SCENARIOS, SCENARIO_ORDER, ANIMALS, PLAYER_COLORS,
+  SCENARIOS, SCENARIO_ORDER, ANIMALS, PLAYER_COLORS, MODES, POTATO, QUICK, RECONNECT,
 } from '../shared/constants.js';
 import { MSG, PHASE, PLAYER_STATE as ST, EVENT, JOIN_ERROR } from '../shared/messages.js';
 import { createBrain, botThink } from './bots.js';
+import { resetRoundRules, updateHazard, inOpenHole, updatePotato, potatoContact, updateHill, rulesPayload } from './modes.js';
 
 const DIFFICULTIES = Object.keys(BOTS.DIFFICULTY);
 const POWERUP_TYPES = Object.keys(POWERUPS.TYPES);
@@ -27,6 +28,7 @@ function sanitizeDebug(d = {}) {
   const slowmo = num(d.slowmo);
   if (slowmo > 0 && slowmo <= 1) out.slowmo = slowmo;
   if (d.nofall) out.nofall = true;
+  if (d.tutorial) out.tutorial = true;
   return out;
 }
 
@@ -55,7 +57,7 @@ export function movePlayer(p, dt, { control, friction, onDash }) {
       iz /= len;
     }
     if (ix || iz) {
-      const mult = coffee ? coffee.speedMult : 1;
+      const mult = (coffee ? coffee.speedMult : 1) * (p.potato ? POTATO.HOLDER_SPEED : 1);
       const maxSpeed = PHYSICS.MAX_SPEED * mult;
       const before = Math.hypot(p.vx, p.vz);
       p.vx += ix * PHYSICS.ACCEL * mult * dt;
@@ -95,16 +97,20 @@ export function movePlayer(p, dt, { control, friction, onDash }) {
 }
 
 export class Game {
-  constructor({ code, send, debug, rng = Math.random }) {
+  constructor({ code, send, debug, rng = Math.random, isPublic = false }) {
     this.code = code;
     this.send = send;
     this.debug = sanitizeDebug(debug);
     this.rng = rng;
+    this.public = isPublic;   // Partida rápida: começa sozinha e volta ao lobby sozinha
+    this.autoStartT = null;   // segundos até começar (só sala pública)
+    this.mode = 'classic';
 
     this.players = new Map();
     this.hostId = null;
     this.phase = PHASE.LOBBY;
-    this.settings = { bots: BOTS.DEFAULT_COUNT, difficulty: BOTS.DEFAULT_DIFFICULTY };
+    this.settings = { bots: BOTS.DEFAULT_COUNT, difficulty: BOTS.DEFAULT_DIFFICULTY, mode: 'classic' };
+    if (isPublic) this.settings.difficulty = QUICK.DIFFICULTY;
     this.kingId = null;
 
     this.tickCount = 0;
@@ -114,6 +120,7 @@ export class Game {
     this.nextBotId = 1;
     this.nextPowerupId = 1;
     this.resetArena();
+    resetRoundRules(this, null);
   }
 
   // ---------- Jogadores ----------
@@ -156,6 +163,8 @@ export class Game {
       lastToucher: null, touchT: -Infinity,
       roundKos: 0, roundSelfKo: false, fallR: 0,
       lastEmote: -Infinity,
+      potato: false,
+      token: null,           // segredo para voltar à partida se a conexão cair
       ...fields,
     };
     this.players.set(id, p);
@@ -175,11 +184,29 @@ export class Game {
     }
 
     const midMatch = this.phase !== PHASE.LOBBY && this.phase !== PHASE.PODIUM;
-    this.newPlayer(id, { nickname: name, animal, spectator: midMatch && ROOM.JOIN_MID_MATCH_AS_SPECTATOR });
+    const token = Array.from({ length: 16 }, () => Math.floor(Math.random() * 36).toString(36)).join('');
+    this.newPlayer(id, { nickname: name, animal, spectator: midMatch && ROOM.JOIN_MID_MATCH_AS_SPECTATOR, token });
     if (!this.hostId) this.hostId = id;
     this.clampBotSetting();
+    if (this.public && this.phase === PHASE.LOBBY && this.autoStartT === null) this.autoStartT = QUICK.AUTO_START;
     this.sendLobby();
-    return { ok: true, playerId: id, code: this.code };
+    return { ok: true, playerId: id, code: this.code, token };
+  }
+
+  // Voltou depois de a conexão cair: devolve o bicho (um bot jogava no lugar).
+  // Retorna o id antigo do jogador; a sala passa a mandar o input dele com esse id.
+  reclaim(token) {
+    if (!token) return null;
+    const p = [...this.players.values()].find((q) => q.token === token);
+    // connected ainda true: o servidor não percebeu a queda; a sala derruba a conexão velha
+    if (!p || (!p.connected && this.simTime - (p.leftAt ?? 0) > RECONNECT.GRACE)) return null;
+    p.bot = null;
+    p.connected = true;
+    p.inputX = 0;
+    p.inputZ = 0;
+    if (!this.hostId || !this.players.get(this.hostId) || this.players.get(this.hostId).bot) this.hostId = p.id;
+    this.sendLobby();
+    return { ok: true, playerId: p.id, code: this.code, token, rejoined: true };
   }
 
   // Retorna quantas pessoas sobraram na sala.
@@ -192,6 +219,7 @@ export class Game {
       p.bot = createBrain(BOTS.REPLACE_LEAVER, this.rng);
       p.botName = Math.floor(this.rng() * BOTS.NAME_ADJECTIVE_COUNT);
       p.connected = false;
+      p.leftAt = this.simTime;
     } else {
       this.players.delete(id);
     }
@@ -206,10 +234,11 @@ export class Game {
     this.settings.bots = clamp(this.settings.bots, 0, max);
   }
 
-  applySettings(id, { bots, difficulty } = {}) {
+  applySettings(id, { bots, difficulty, mode } = {}) {
     if (id !== this.hostId || this.phase !== PHASE.LOBBY) return;
     if (bots !== undefined) this.settings.bots = Math.floor(num(bots, this.settings.bots));
     if (DIFFICULTIES.includes(difficulty)) this.settings.difficulty = difficulty;
+    if (MODES.includes(mode)) this.settings.mode = mode;
     this.clampBotSetting();
     this.sendLobby();
   }
@@ -242,11 +271,19 @@ export class Game {
 
   // ---------- Partida ----------
 
-  startMatch(id, { bots, difficulty } = {}) {
+  startMatch(id, { bots, difficulty, mode } = {}) {
     if (id !== this.hostId || this.phase !== PHASE.LOBBY) return false;
-    this.applySettings(id, { bots, difficulty });
+    if (this.debug.tutorial) {
+      // Tutorial: só um boneco parado, sem anéis caindo nem power-ups
+      bots = 1;
+      mode = 'classic';
+    }
+    this.applySettings(id, { bots, difficulty, mode });
+    this.autoStartT = null;
     this.syncBots();
+    if (this.debug.tutorial) for (const b of this.bots) b.bot = createBrain('dummy', this.rng);
     if (this.players.size < ROOM.MIN_PLAYERS) return false;
+    this.mode = this.settings.mode;
     for (const p of this.players.values()) {
       Object.assign(p, { wins: 0, kos: 0, selfKos: 0, aliveTime: 0, spectator: false });
     }
@@ -260,6 +297,7 @@ export class Game {
   rematch() {
     if (this.phase !== PHASE.PODIUM) return;
     this.setPhase(PHASE.LOBBY);
+    if (this.public) this.autoStartT = QUICK.AUTO_START;
     for (const p of this.players.values()) {
       p.spectator = false;
       p.st = ST.OUT;
@@ -281,8 +319,9 @@ export class Game {
     this.scenario = this.debug.scenario ?? SCENARIO_ORDER[(this.round - 1) % SCENARIO_ORDER.length];
     const sc = SCENARIOS[this.scenario].physics;
     this.friction = sc.FRICTION ?? PHYSICS.FRICTION;
-    this.ringInterval = sc.RING_INTERVAL ?? ARENA.RING_INTERVAL;
+    this.ringInterval = (sc.RING_INTERVAL ?? ARENA.RING_INTERVAL) * (this.mode === 'potato' ? POTATO.RING_INTERVAL_MULT : 1);
     this.resetArena();
+    resetRoundRules(this, this.debug.tutorial ? null : SCENARIOS[this.scenario].hazard);
 
     const list = this.participants;
     list.forEach((p, i) => {
@@ -301,8 +340,9 @@ export class Game {
       });
       if (p.bot) p.bot = createBrain(p.bot.difficulty, this.rng);
     });
+    if (this.debug.tutorial) this.placeTutorial();
 
-    this.send(MSG.ROUND, { round: this.round, scenario: this.scenario });
+    this.send(MSG.ROUND, { round: this.round, scenario: this.scenario, mode: this.mode });
     this.setPhase(PHASE.COUNTDOWN);
     this.lastCount = null;
   }
@@ -328,7 +368,10 @@ export class Game {
 
     switch (this.phase) {
       case PHASE.LOBBY:
+        this.tickAutoStart(realDt);
+        return;
       case PHASE.PODIUM:
+        if (this.public && this.phaseTime >= QUICK.REMATCH_AFTER) this.rematch();
         return;
 
       case PHASE.COUNTDOWN: {
@@ -346,15 +389,26 @@ export class Game {
       }
 
       case PHASE.PLAYING:
-      case PHASE.SUDDEN_DEATH:
+      case PHASE.SUDDEN_DEATH: {
         this.roundTime += dt;
-        this.updateArena(dt);
-        this.updatePowerups(dt);
+        if (!this.debug.tutorial) {
+          this.updateArena(dt);
+          this.updatePowerups(dt);
+        }
+        updateHazard(this, dt);
+        updatePotato(this, dt);
         this.thinkBots(dt);
         this.physics(dt, true);
         this.checkFalls();
-        this.checkRoundEnd();
+        if (this.debug.tutorial) {
+          this.tickTutorial();
+          break;
+        }
+        const hillWinner = updateHill(this, dt);
+        if (hillWinner) this.endRound(hillWinner);
+        else this.checkRoundEnd();
         break;
+      }
 
       case PHASE.ROUND_END:
         this.thinkBots(dt);
@@ -555,6 +609,7 @@ export class Game {
         const wa = ta / (ta + tb);
         const wb = tb / (ta + tb);
 
+        potatoContact(this, a, b);
         const overlap = min - Math.min(d, min);
         a.x -= nx * overlap * wa;
         a.z -= nz * overlap * wa;
@@ -599,7 +654,10 @@ export class Game {
     for (const p of this.participants) {
       if (!isStanding(p)) continue;
       const r = Math.hypot(p.x, p.z);
-      if (r <= this.arena.radius) continue;
+      if (r <= this.arena.radius) {
+        if (inOpenHole(this, p)) this.fall(p, r, afterRound, 'hole');
+        continue;
+      }
       if (this.debug.nofall) {
         const k = this.arena.radius / r;
         p.x *= k;
@@ -615,7 +673,7 @@ export class Game {
     }
   }
 
-  fall(p, r, afterRound) {
+  fall(p, r, afterRound, why = null) {
     p.st = ST.FALLING;
     p.stT = PHYSICS.FALL_DURATION;
     p.fallR = r;
@@ -632,7 +690,8 @@ export class Game {
         p.roundSelfKo = true;
       }
     }
-    this.event(EVENT.FALL, { id: p.id, by, x: r2(p.x), z: r2(p.z) });
+    p.potato = false;
+    this.event(EVENT.FALL, { id: p.id, by, x: r2(p.x), z: r2(p.z), why });
     if (by && p.id === this.kingId && !afterRound) {
       if (!this.kingslayerId) this.kingslayerId = by;
       this.event(EVENT.KINGSLAYER, { id: by, king: p.id });
@@ -725,6 +784,50 @@ export class Game {
     this.sendLobby();
   }
 
+  // ---------- Partida rápida ----------
+
+  tickAutoStart(dt) {
+    if (!this.public || this.autoStartT === null) return;
+    const humans = this.humans.length;
+    if (humans === 0) {
+      this.autoStartT = null;
+      return;
+    }
+    const before = Math.ceil(this.autoStartT);
+    this.autoStartT = Math.max(0, this.autoStartT - dt);
+    if (this.autoStartT <= 0 || humans >= QUICK.START_NOW_HUMANS) {
+      this.autoStartT = null;
+      const bots = Math.max(0, Math.min(BOTS.MAX, QUICK.MIN_TOTAL - humans));
+      this.startMatch(this.hostId, { bots, difficulty: QUICK.DIFFICULTY });
+      return;
+    }
+    if (Math.ceil(this.autoStartT) !== before) this.sendLobby();
+  }
+
+  // ---------- Tutorial ----------
+
+  placeTutorial() {
+    const me = this.humans[0];
+    const dummy = this.bots[0];
+    if (me) Object.assign(me, { x: 0, z: 3, vx: 0, vz: 0, dir: Math.PI });
+    if (dummy) Object.assign(dummy, { x: 0, z: -3.5, vx: 0, vz: 0, dir: 0 });
+  }
+
+  tickTutorial() {
+    const me = this.humans[0];
+    const dummy = this.bots[0];
+    if (!this.tutorialDone && dummy && (dummy.st === ST.FALLING || dummy.st === ST.OUT)) {
+      this.tutorialDone = true;
+      this.event(EVENT.TUTORIAL, { step: 'done' });
+    }
+    // Quem cai volta para o meio (no tutorial ninguém perde)
+    for (const p of [me, dummy]) {
+      if (!p || p.st !== ST.OUT) continue;
+      const home = p === me ? { x: 0, z: 3 } : { x: 0, z: -3.5 };
+      Object.assign(p, { ...home, vx: 0, vz: 0, st: ST.ALIVE, stT: 0, lastToucher: null });
+    }
+  }
+
   // ---------- Emotes ----------
 
   emote(id, { n } = {}) {
@@ -754,6 +857,9 @@ export class Game {
       phase: this.phase,
       bots: this.settings.bots,
       difficulty: this.settings.difficulty,
+      mode: this.settings.mode,
+      public: this.public,
+      autoStartIn: this.autoStartT,
       kingId: this.kingId,
       round: this.round,
       scenario: this.scenario ?? null,
@@ -784,6 +890,7 @@ export class Game {
         warning: this.arena.warning,
         soap: this.soapT > 0,
         rings: this.arena.rings,
+        ...rulesPayload(this),
       },
       players: this.participants.map((p) => ({
         id: p.id,
@@ -799,6 +906,7 @@ export class Game {
         pu: p.pu,
         puT: r2(Math.max(0, p.puT)),
         seq: p.bot ? undefined : p.ackSeq ?? 0,
+        potato: p.potato || undefined,
       })),
       powerups: this.powerups,
     };

@@ -14,7 +14,8 @@ export const MSG = {
   EMOTE: 'emote',       // { n: 1..4 }
 
   // ADIÇÕES PROPOSTAS (não estão na tabela do GDD; aguardando o "ok")
-  SETTINGS: 'settings', // { bots, difficulty }   anfitrião mexeu no lobby; o servidor reenvia `lobby`
+  SETTINGS: 'settings', // { bots, difficulty, mode }   anfitrião mexeu no lobby; o servidor reenvia `lobby`
+                        //   join também aceita { quick: true } (sala pública) e { rejoin: token } (voltar à partida)
   REMATCH: 'rematch',   // {}   botão "Rematch" do pódio: a sala volta ao lobby
 
   // servidor → todos da sala
@@ -61,6 +62,13 @@ export const EVENT = {
   PODIUM: 'podium',                // { champion: id }
   KINGSLAYER: 'kingslayer',        // { id, king }
   LONG_LIVE_KING: 'longLiveKing',  // { id, streak }
+
+  // Modos e obstáculos (adições)
+  WIND: 'wind',                    // { phase: 'warn' | 'blow' | 'stop', dx, dz }   rajada de vento (Sky Island)
+  ICE: 'ice',                      // { hid, phase: 'crack' | 'open' | 'close', x, z, r }   buraco no gelo (Frozen Lake)
+  POTATO: 'potato',                // { id, from: id | null, fuse }   a bomba da Batata quente foi para id
+  POTATO_BOOM: 'potatoBoom',       // { id, x, z, hit: [id] }   a bomba explodiu em id
+  TUTORIAL: 'tutorial',            // { step: 'done' }   o boneco do tutorial caiu
 };
 
 // Erros do ack de `join`.

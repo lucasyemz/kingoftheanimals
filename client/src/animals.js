@@ -82,13 +82,45 @@ function placeholderBody(color) {
   return g;
 }
 
+// Coroa feita aqui mesmo (não há modelo CC0 de coroa nos kits): aro, 5 pontas com
+// bolinhas e pedras vermelhas e azuis. Os materiais são compartilhados entre os bichos.
+const CROWN_MAT = {
+  gold: new THREE.MeshStandardMaterial({ color: '#ffd23f', metalness: 0.55, roughness: 0.3, emissive: '#8a6400', side: THREE.DoubleSide }),
+  tip: new THREE.MeshStandardMaterial({ color: '#fff1b0', metalness: 0.5, roughness: 0.2, emissive: '#6b5a10' }),
+  ruby: new THREE.MeshStandardMaterial({ color: '#e63946', metalness: 0.2, roughness: 0.15, emissive: '#5a0a10' }),
+  sapphire: new THREE.MeshStandardMaterial({ color: '#4361ee', metalness: 0.2, roughness: 0.15, emissive: '#0a1450' }),
+  velvet: new THREE.MeshStandardMaterial({ color: '#c1121f', roughness: 0.9, emissive: '#3a0006' }),
+};
 function crownMesh(propModel) {
   if (propModel) return propModel;
   const g = new THREE.Group();
-  const gold = new THREE.MeshStandardMaterial({ color: '#ffd23f', metalness: 0.6, roughness: 0.3, emissive: '#6b4f00' });
-  const cone = new THREE.Mesh(new THREE.ConeGeometry(0.28, 0.45, 5), gold);
-  cone.position.y = 0.22;
-  g.add(cone);
+  const R = 0.29;
+  const band = new THREE.Mesh(new THREE.CylinderGeometry(R, R * 0.92, 0.16, 28, 1, true), CROWN_MAT.gold);
+  band.position.y = 0.08;
+  g.add(band);
+  // Veludo dentro do aro: de cima (a câmera do jogo) a coroa não parece oca
+  const velvet = new THREE.Mesh(new THREE.SphereGeometry(R * 0.9, 18, 8, 0, Math.PI * 2, 0, Math.PI / 2), CROWN_MAT.velvet);
+  velvet.scale.y = 0.75;
+  g.add(velvet);
+  const rim = new THREE.Mesh(new THREE.TorusGeometry(R * 0.96, 0.028, 8, 28), CROWN_MAT.gold);
+  rim.rotation.x = Math.PI / 2;
+  rim.position.y = 0.01;
+  g.add(rim);
+  for (let i = 0; i < 5; i++) {
+    const a = (i / 5) * Math.PI * 2;
+    const spike = new THREE.Mesh(new THREE.ConeGeometry(0.085, 0.22, 4), CROWN_MAT.gold);
+    spike.position.set(Math.cos(a) * R * 0.97, 0.26, Math.sin(a) * R * 0.97);
+    g.add(spike);
+    const ball = new THREE.Mesh(new THREE.SphereGeometry(0.04, 10, 8), CROWN_MAT.tip);
+    ball.position.set(spike.position.x, 0.39, spike.position.z);
+    g.add(ball);
+    const b = a + Math.PI / 5;
+    const gem = new THREE.Mesh(new THREE.OctahedronGeometry(0.045), i % 2 ? CROWN_MAT.sapphire : CROWN_MAT.ruby);
+    gem.position.set(Math.cos(b) * (R + 0.005), 0.08, Math.sin(b) * (R + 0.005));
+    gem.rotation.y = -b;
+    g.add(gem);
+  }
+  g.traverse((o) => o.isMesh && (o.castShadow = true));
   return g;
 }
 
