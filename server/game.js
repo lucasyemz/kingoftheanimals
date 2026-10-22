@@ -148,7 +148,7 @@ export class Game {
     this.hostId = null;
     this.phase = PHASE.LOBBY;
     // Single Player começa na dificuldade automática
-    this.settings = { bots: BOTS.DEFAULT_COUNT, difficulty: code === 'SOLO' ? 'auto' : BOTS.DEFAULT_DIFFICULTY, mode: 'classic' };
+    this.settings = { bots: BOTS.DEFAULT_COUNT, difficulty: code === 'SOLO' ? 'auto' : BOTS.DEFAULT_DIFFICULTY, mode: 'party' };
     if (isPublic) Object.assign(this.settings, { difficulty: QUICK.DIFFICULTY, mode: QUICK.MODE });
     this.kingId = null;
 

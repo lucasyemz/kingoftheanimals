@@ -485,7 +485,7 @@ export function createUI(handlers) {
       only('lobby');
       const solo = mode === 'solo';
       $('.lobby-title', root).textContent = solo ? STR.singlePlayer : lobby.public ? STR.publicRoom : STR.multiplayer;
-      const gameMode = lobby.mode ?? 'classic';
+      const gameMode = lobby.mode ?? 'party';
       root.querySelectorAll('.game-mode').forEach((b) => b.classList.toggle('selected', b.dataset.mode === gameMode));
       $('.mode-hint-text', root).textContent = STR.modeHints[gameMode];
       const auto = $('.auto-start', root);
