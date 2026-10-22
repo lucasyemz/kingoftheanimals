@@ -421,6 +421,7 @@ export const CAMERA = {
   TILT_DEG: 55,               // GDD: de cima, 55° de inclinação
   FOV: 45,                    // definido
   FRAME_MARGIN: 1.25,         // definido: enquadra o raio da arena × 1,25
+  FRAME_MARGIN_PORTRAIT: 1.1, // celular em pé: a largura limita, então a margem é menor
   ZOOM_TWEEN: 1.0,            // definido: segundos para aproximar quando um anel cai
 };
 

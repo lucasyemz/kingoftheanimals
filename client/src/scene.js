@@ -11,6 +11,7 @@ import { seeded, rockWallGeometry, canyon, rockColumn, abyssBottom } from './sce
 import { settings } from './settings.js';
 
 export const IS_MOBILE = matchMedia('(pointer: coarse)').matches;
+const PORTRAIT_ASPECT = 0.8;
 // Gráfico leve: sem sombra, sem bloom, metade dos props e partículas. Automático no celular.
 // autoLow: numa visita anterior o aparelho engasgou e o jogo baixou a qualidade sozinho
 export const LOW_GFX = settings.graphics === 'low' || (settings.graphics === 'auto' && (IS_MOBILE || settings.autoLow));
@@ -432,6 +433,9 @@ export function createWorld(canvas) {
     renderer.setSize(w, h, false);
     composer?.setSize(w, h);
     camera.aspect = w / h;
+    // Celular em pé: a arena sobe um pouco, longe dos botões de baixo
+    if (camera.aspect < PORTRAIT_ASPECT) camera.setViewOffset(w, h, 0, h * 0.04, w, h);
+    else camera.clearViewOffset();
     camera.updateProjectionMatrix();
   };
   addEventListener('resize', world.resize);
@@ -442,7 +446,8 @@ export function createWorld(canvas) {
     world.time += dt;
     world.viewRadius += (world.targetRadius - world.viewRadius) * Math.min(1, dt / CAMERA.ZOOM_TWEEN * 3);
     const half = THREE.MathUtils.degToRad(CAMERA.FOV / 2);
-    const fit = world.viewRadius * CAMERA.FRAME_MARGIN;
+    // em pé a largura é o limite: a arena ocupa mais da tela para os bichos não ficarem minúsculos
+    const fit = world.viewRadius * (camera.aspect < PORTRAIT_ASPECT ? CAMERA.FRAME_MARGIN_PORTRAIT : CAMERA.FRAME_MARGIN);
     // De cima a 55°, a profundidade da arena aparece encurtada (× sen 55°)
     const fitV = fit * Math.sin(tilt) * 1.15;
     const dist = Math.max(fitV / Math.tan(half), fit / (Math.tan(half) * camera.aspect)) * world.focusZoom;

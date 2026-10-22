@@ -206,7 +206,6 @@ export function createUI(handlers) {
       </div>
     </section>
     <div class="toast"></div>
-    <div class="rotate-hint"><div class="outlined">${STR.rotatePhone}</div></div>
   `;
 
   const screens = {

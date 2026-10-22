@@ -72,7 +72,7 @@ export function createInput({ onEmote, onDash, onJump, onMenu, touchRoot }) {
 
   const held = (action) => KEYS[action].some((k) => down.has(k));
 
-  // ---------- Celular (P2): joystick à esquerda, dash à direita, emotes no topo ----------
+  // ---------- Celular (P2): joystick à esquerda, dash e pulo à direita, emotes embaixo ----------
 
   let touch = null;
   function enableTouch() {
@@ -126,9 +126,15 @@ export function createInput({ onEmote, onDash, onJump, onMenu, touchRoot }) {
       b.addEventListener('touchstart', (e) => {
         e.preventDefault();
         onEmote(i + 1);
+        touchRoot.classList.remove('emotes-open');
       }, { passive: false });
       emoteBar.append(b);
     }
+    // Celular em pé: os emotes ficam num balão 💬 que abre e fecha
+    touchRoot.querySelector('.emote-toggle').addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      touchRoot.classList.toggle('emotes-open');
+    }, { passive: false });
     touch = joystick;
   }
   addEventListener('touchstart', enableTouch, { once: true, passive: true });

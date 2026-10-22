@@ -282,7 +282,6 @@ export const STR = {
     dummy: 'Dummy',
   },
 
-  rotatePhone: 'Turn your phone sideways to play',
   dash: 'DASH',
   jump: 'JUMP',
   controls: [['Space', 'Jump'], ['E', 'Dash (hold to charge)']],
