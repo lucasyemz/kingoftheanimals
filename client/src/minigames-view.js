@@ -5,9 +5,12 @@
 import * as THREE from 'three';
 import { ARENA, HEX } from '../../shared/constants.js';
 import { HEX_TILES } from '../../shared/hexgrid.js';
+import { PLAYER_STATE as ST } from '../../shared/messages.js';
 
 const LAYER_COLORS = ['#7ad3ff', '#ffd166', '#ff8fab'];
 const BAR_COLORS = { low: '#f9c74f', high: '#e63946' };
+const LIVE = new Set([ST.ALIVE, ST.DASHING, ST.STUNNED]);
+const LAYER_FADE = 0.5; // segundos para um andar vazio sumir
 
 function beachBallTexture() {
   const c = document.createElement('canvas');
@@ -63,18 +66,44 @@ export function createMinigamesView(world) {
       mesh.setColorAt(i, c);
     }
     root.add(mesh);
-    layers.push({ mesh, base, prev: '', fallAt: new Float64Array(HEX_TILES.length) });
+    layers.push({ mesh, base, prev: '', fallAt: new Float64Array(HEX_TILES.length), fade: 1 });
   }
   const dummy = new THREE.Object3D();
   const white = new THREE.Color('#ffffff');
   const tmpColor = new THREE.Color();
 
-  function drawHex(states, now) {
+  // Andar mais alto que ainda tem bicho em pé: a câmera segue ele, e os andares
+  // de cima, já vazios, somem para não tapar quem está embaixo
+  let topLayer = 0;
+  function findTopLayer(players) {
+    let top = Infinity;
+    for (const p of players) if (LIVE.has(p.st)) top = Math.min(top, p.layer ?? 0);
+    if (top !== Infinity) topLayer = top; // ninguém em pé (fim da rodada): fica onde estava
+    return topLayer;
+  }
+
+  function fadeLayer(layer, show, dt) {
+    const target = show ? 1 : 0;
+    const was = layer.fade;
+    layer.fade = show ? Math.min(1, was + dt / LAYER_FADE) : Math.max(0, was - dt / LAYER_FADE);
+    if (layer.fade === was && was === target) return;
+    const mat = layer.mesh.material;
+    const transparent = layer.fade < 1;
+    if (mat.transparent !== transparent) {
+      mat.transparent = transparent;
+      mat.depthWrite = !transparent;
+      mat.needsUpdate = true;
+    }
+    mat.opacity = layer.fade;
+  }
+
+  function drawHex(states, now, top, dt) {
     const list = states.split('|');
     layers.forEach((layer, L) => {
       const st = list[L] ?? '';
-      layer.mesh.visible = !!st;
-      if (!st) return;
+      fadeLayer(layer, L >= top, dt);
+      layer.mesh.visible = !!st && layer.fade > 0;
+      if (!layer.mesh.visible) return;
       const y = -L * HEX.LAYER_GAP - 0.175;
       for (let i = 0; i < HEX_TILES.length; i++) {
         const t = HEX_TILES[i];
@@ -141,7 +170,7 @@ export function createMinigamesView(world) {
   }
 
   return {
-    debug: () => ({ balls: balls.size, bars: bars.filter((m) => m.visible).length }),
+    debug: () => ({ balls: balls.size, bars: bars.filter((m) => m.visible).length, topLayer, layerFade: layers.map((l) => +l.fade.toFixed(2)), focusY: +world.focusY.toFixed(2) }),
     update(s, dt, { animals, colorOf, players }) {
       const a = s.arena ?? {};
       const now = performance.now();
@@ -164,8 +193,15 @@ export function createMinigamesView(world) {
 
       // Chão de hexágonos (e a arena normal some)
       world.setArenaHidden(!!a.hex);
-      if (a.hex) drawHex(a.hex, now);
-      else layers.forEach((l) => (l.mesh.visible = false));
+      if (a.hex) {
+        const top = findTopLayer(s.players);
+        world.setFocusY(-top * HEX.LAYER_GAP);
+        drawHex(a.hex, now, top, dt);
+      } else {
+        layers.forEach((l) => (l.mesh.visible = false));
+        topLayer = 0;
+        world.setFocusY(0);
+      }
 
       syncBalls(a.balls, dt);
     },
@@ -174,7 +210,10 @@ export function createMinigamesView(world) {
       for (const l of layers) {
         l.prev = '';
         l.mesh.visible = false;
+        fadeLayer(l, true, LAYER_FADE);
       }
+      topLayer = 0;
+      world.setFocusY(0, true);
       syncBalls([], 0);
       bars.forEach((m) => (m.visible = false));
       hub.visible = false;

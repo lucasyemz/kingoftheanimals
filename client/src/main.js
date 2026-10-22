@@ -1199,7 +1199,8 @@ function spectateFrame(s, dt, replaying) {
   if (!alive.length) return;
   let target = alive.find((p) => p.id === spectate.id);
   if (!target) {
-    target = alive[0];
+    // Chão que some: começa por quem está no andar mais alto
+    target = alive.reduce((a, b) => ((b.layer ?? 0) < (a.layer ?? 0) ? b : a));
     spectate.id = target.id;
   }
   spectate.active = true;

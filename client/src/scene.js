@@ -184,6 +184,8 @@ export function createWorld(canvas) {
     shake: { power: 0 },
     focus: new THREE.Vector3(),
     focusZoom: 1,
+    focusY: 0,       // altura que a câmera mira (Chão que some: o andar mais alto com gente)
+    targetFocusY: 0,
     time: 0,
   };
 
@@ -427,6 +429,12 @@ export function createWorld(canvas) {
     world.focusZoom += (zoom - world.focusZoom) * k;
   };
 
+  // Chão que some: a câmera desce junto com o andar mais alto que ainda tem bicho
+  world.setFocusY = (y, instant = false) => {
+    world.targetFocusY = y;
+    if (instant) world.focusY = y;
+  };
+
   world.resize = () => {
     const w = innerWidth;
     const h = innerHeight;
@@ -451,13 +459,14 @@ export function createWorld(canvas) {
     // De cima a 55°, a profundidade da arena aparece encurtada (× sen 55°)
     const fitV = fit * Math.sin(tilt) * 1.15;
     const dist = Math.max(fitV / Math.tan(half), fit / (Math.tan(half) * camera.aspect)) * world.focusZoom;
+    world.focusY += (world.targetFocusY - world.focusY) * Math.min(1, dt * 3);
     const s = world.shake.power;
     camera.position.set(
       world.focus.x + (Math.random() - 0.5) * s,
-      Math.sin(tilt) * dist + (Math.random() - 0.5) * s,
+      world.focusY + Math.sin(tilt) * dist + (Math.random() - 0.5) * s,
       world.focus.z + Math.cos(tilt) * dist,
     );
-    camera.lookAt(world.focus.x, 0, world.focus.z);
+    camera.lookAt(world.focus.x, world.focusY, world.focus.z);
 
     // Anel piscando vermelho antes de cair
     rings.forEach((m, i) => {
