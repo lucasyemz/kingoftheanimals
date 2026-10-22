@@ -175,6 +175,12 @@ export function createUI(handlers) {
             ${Object.keys(STR.graphicsModes).map((g) => `<button class="btn small gfx" data-gfx="${g}">${STR.graphicsModes[g]}</button>`).join('')}
           </div>
         </div>
+        <div class="setting">
+          <span class="field-label">${STR.camera}</span>
+          <div class="segmented">
+            ${Object.keys(STR.cameraModes).map((c) => `<button class="btn small cam" data-cam="${c}">${STR.cameraModes[c]}</button>`).join('')}
+          </div>
+        </div>
         <div class="gfx-reload" hidden><span>${STR.graphicsReload}</span> <button class="btn small do-reload">${STR.reload}</button></div>
         <button class="btn fullscreen">${STR.fullscreen}</button>
         <div class="hint">${STR.muteHint}</div>
@@ -302,6 +308,7 @@ export function createUI(handlers) {
     volSfx.value = settings.sfx;
     muteBox.checked = settings.muted;
     root.querySelectorAll('.gfx').forEach((b) => b.classList.toggle('selected', b.dataset.gfx === settings.graphics));
+    root.querySelectorAll('.cam').forEach((b) => b.classList.toggle('selected', b.dataset.cam === settings.camera));
     $('.gfx-reload', root).hidden = settings.graphics === startGfx;
     $('.gear', root).classList.toggle('muted', settings.muted);
   }
@@ -337,6 +344,10 @@ export function createUI(handlers) {
   });
   root.querySelectorAll('.gfx').forEach((b) => b.addEventListener('click', () => {
     saveSettings({ graphics: b.dataset.gfx, autoLow: false });
+    syncSettings();
+  }));
+  root.querySelectorAll('.cam').forEach((b) => b.addEventListener('click', () => {
+    saveSettings({ camera: b.dataset.cam });
     syncSettings();
   }));
   $('.do-reload', root).addEventListener('click', () => location.reload());

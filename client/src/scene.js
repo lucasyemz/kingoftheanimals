@@ -420,14 +420,15 @@ export function createWorld(canvas) {
   };
 
   // Câmera de espectador: segue um ponto suavemente, a cada quadro
-  world.follow = (x, z, zoom, dt) => {
+  world.follow = (x, z, zoom, dt, rate = 4, zoomRate = rate) => {
     gsap.killTweensOf(world.focus);
     gsap.killTweensOf(world, 'focusZoom');
-    const k = Math.min(1, dt * 4);
+    const k = Math.min(1, dt * rate);
     world.focus.x += (x - world.focus.x) * k;
     world.focus.z += (z - world.focus.z) * k;
-    world.focusZoom += (zoom - world.focusZoom) * k;
+    world.focusZoom += (zoom - world.focusZoom) * Math.min(1, dt * zoomRate);
   };
+  world.isPortrait = () => camera.aspect < PORTRAIT_ASPECT;
 
   // Chão que some: a câmera desce junto com o andar mais alto que ainda tem bicho
   world.setFocusY = (y, instant = false) => {

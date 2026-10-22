@@ -423,6 +423,18 @@ export const CAMERA = {
   FRAME_MARGIN: 1.25,         // definido: enquadra o raio da arena × 1,25
   FRAME_MARGIN_PORTRAIT: 1.1, // celular em pé: a largura limita, então a margem é menor
   ZOOM_TWEEN: 1.0,            // definido: segundos para aproximar quando um anel cai
+  // Câmera perto (padrão): segue o seu bicho e enquadra quem está em volta
+  FOLLOW: {
+    VIEW: 7,                  // metros de raio mínimo à vista (deitado)
+    VIEW_PORTRAIT: 5.5,       // celular em pé: mais perto, os bichos ficam maiores
+    NEAR: 3.5,                // quem está até aqui de você entra no enquadramento
+    PAD: 2,                   // folga em volta do grupo
+    LEAD: 0.35,               // olha um pouco para onde você está indo (segundos de movimento)
+    LEAD_MAX: 1.5,
+    EDGE: 1.5,                // perto da beirada, deixa ver um pouco do vazio
+    RATE: 3,                  // suavidade do movimento (maior = mais rápido)
+    ZOOM_RATE: 1.5,
+  },
 };
 
 export const FX = {

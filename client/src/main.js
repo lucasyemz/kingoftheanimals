@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
 import gsap from 'gsap';
 import { io } from 'socket.io-client';
-import { NET, ANIMALS, MATCH, SCENARIOS, EMOTES, POWERUPS, PLAYER_COLORS, PHYSICS, HILL, HEX, COINS, CHARGE } from '../../shared/constants.js';
+import { NET, ANIMALS, MATCH, SCENARIOS, EMOTES, POWERUPS, PLAYER_COLORS, PHYSICS, HILL, HEX, COINS, CHARGE, CAMERA } from '../../shared/constants.js';
 import { MSG, PHASE, PLAYER_STATE as ST, EVENT } from '../../shared/messages.js';
 import { Game, movePlayer } from '../../server/game.js';
 import { STR } from './strings.js';
@@ -433,7 +433,8 @@ function shareWhatsApp() {
 
 function toggleFullscreen() {
   if (document.fullscreenElement) return document.exitFullscreen?.();
-  document.documentElement.requestFullscreen?.().then(() => screen.orientation?.lock?.('landscape').catch(() => {})).catch(() => {});
+  // sem travar a orientação: em pé ou deitado, como o jogador preferir
+  document.documentElement.requestFullscreen?.().catch(() => {});
 }
 
 // M: liga e desliga o som em qualquer tela
@@ -1068,6 +1069,7 @@ if (SHOW_DEBUG) {
     view: () => Object.fromEntries([...animals].map(([id, a]) => [id, [a.root.position.x, a.root.position.z]])),
     crownPreview: () => preview?.setCrown(true),
     minigames: () => mgView.debug(),
+    cam: () => ({ x: +world.focus.x.toFixed(2), z: +world.focus.z.toFixed(2), zoom: +world.focusZoom.toFixed(2), follow: playerCam.active, target: playerCam.target }),
   };
 }
 let frames = 0;
@@ -1176,6 +1178,54 @@ function frame(now) {
   }
 }
 
+// ---------- Câmera perto ----------
+// Enquanto você joga, a câmera segue o seu bicho, um pouco à frente de onde ele vai,
+// e abre o enquadramento para caber quem está por perto (e a colina). Quando a arena
+// encolhe, ela volta a mostrar tudo. Nas configurações dá para escolher a arena inteira.
+
+const playerCam = { active: false };
+function playerCamFrame(s, me, dt) {
+  const F = CAMERA.FOLLOW;
+  const a = animals.get(myId);
+  const mx = a?.root.position.x ?? me.x;
+  const mz = a?.root.position.z ?? me.z;
+  const lead = Math.min(F.LEAD_MAX, Math.hypot(me.vx ?? 0, me.vz ?? 0) * F.LEAD);
+  const sp = Math.hypot(me.vx ?? 0, me.vz ?? 0) || 1;
+  let minX = mx + ((me.vx ?? 0) / sp) * lead;
+  let maxX = minX;
+  let minZ = mz + ((me.vz ?? 0) / sp) * lead;
+  let maxZ = minZ;
+  const add = (x, z) => {
+    if (Math.hypot(x - mx, z - mz) > F.NEAR) return;
+    minX = Math.min(minX, x);
+    maxX = Math.max(maxX, x);
+    minZ = Math.min(minZ, z);
+    maxZ = Math.max(maxZ, z);
+  };
+  add(mx, mz);
+  for (const p of s.players) {
+    if (p.id === myId || !LIVE.has(p.st) || (p.layer ?? 0) !== (me.layer ?? 0)) continue;
+    const q = animals.get(p.id)?.root.position ?? p;
+    add(q.x, q.z);
+  }
+  if (s.arena?.hill) add(s.arena.hill.x, s.arena.hill.z);
+  const spread = Math.max(maxX - minX, maxZ - minZ) / 2 + F.PAD;
+  const view = Math.max(world.isPortrait() ? F.VIEW_PORTRAIT : F.VIEW, spread);
+  const zoom = Math.min(1, view / world.viewRadius);
+  // o centro não se afasta mais do que falta para a beirada (pouco céu vazio na tela)
+  let fx = (minX + maxX) / 2;
+  let fz = (minZ + maxZ) / 2;
+  const lim = world.viewRadius * (1 - zoom) + F.EDGE;
+  const d = Math.hypot(fx, fz);
+  if (d > lim) {
+    fx *= lim / d;
+    fz *= lim / d;
+  }
+  playerCam.active = true;
+  playerCam.target = { x: +fx.toFixed(2), z: +fz.toFixed(2), zoom: +zoom.toFixed(2), spread: +spread.toFixed(2), r: +world.viewRadius.toFixed(2) };
+  world.follow(fx, fz, zoom, dt, F.RATE, F.ZOOM_RATE);
+}
+
 // ---------- Câmera de espectador ----------
 // Fora da rodada (caiu, foi eliminado ou entrou no meio): a câmera segue quem ainda
 // joga. Clique, toque ou Espaço troca de bicho.
@@ -1193,8 +1243,15 @@ function spectateFrame(s, dt, replaying) {
       if (playing && !replaying) world.focusOn(0, 0, 1, 0.6);
     }
     ui.watching(null);
+    if (playing && !replaying && !tutorial.active && me && LIVE.has(me.st) && settings.camera !== 'arena') {
+      playerCamFrame(s, me, dt);
+    } else if (playerCam.active) {
+      playerCam.active = false;
+      if (playing && !replaying && (!me || LIVE.has(me.st))) world.focusOn(0, 0, 1, 0.6);
+    }
     return;
   }
+  playerCam.active = false;
   const alive = s.players.filter((p) => LIVE.has(p.st));
   if (!alive.length) return;
   let target = alive.find((p) => p.id === spectate.id);

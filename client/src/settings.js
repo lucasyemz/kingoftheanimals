@@ -9,6 +9,7 @@ const DEFAULTS = {
   sfx: 0.8,         // 0..1
   muted: false,
   graphics: 'auto', // 'auto' | 'high' | 'low'  (auto = leve no celular)
+  camera: 'close',  // 'close' (segue o seu bicho) | 'arena' (arena inteira)
   tutorialDone: false,
 };
 

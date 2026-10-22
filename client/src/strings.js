@@ -238,6 +238,8 @@ export const STR = {
   effects: 'Effects',
   mute: 'Mute all',
   graphics: 'Graphics',
+  camera: 'Camera',
+  cameraModes: { close: 'Follow me', arena: 'Whole arena' },
   graphicsModes: { auto: 'Auto', high: 'High', low: 'Light' },
   graphicsReload: 'Graphics change after a reload. Reload now?',
   autoLowGfx: 'Switched to light graphics for smoother play',
